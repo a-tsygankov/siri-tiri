@@ -365,7 +365,7 @@ The silhouette set is most useful as a **persistent visual identity for Tiri**, 
 
 ### Validation before expanding the pose system
 
-The current ui-cat-avatar-system.svg already shows the most valuable cross-surface pattern: one consistent Tiri avatar on the device and in event history, with event/state meanings carried by text and separate badges. Keep that as the design baseline.
+An interactive companion prototype is available at [docs/ui-prototype.html](ui-prototype.html). It lets you switch between the round device and web history, toggle mute/offline states, and save a sample event label. The existing ui-cat-avatar-system.svg shows the most valuable static cross-surface pattern: one consistent Tiri avatar on the device and in event history, with event/state meanings carried by text and separate badges. Keep that as the design baseline.
 
 Before using all twelve poses or adding state colors, show a few variants to household users at actual display sizes. Ask what each silhouette means, whether it looks like a mood or event label, and whether users can still find Listening/Muted and Needs review without relying on color. Check both the 466 px round screen and small event-row sizes. This is a lightweight way to catch accidental meanings and low-visibility details; it is not evidence that the system can infer cat emotion.
 
