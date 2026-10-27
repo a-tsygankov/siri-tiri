@@ -1,0 +1,20 @@
+{
+  "id": "./companion-app-design.html",
+  "name": "Siri-Tiri Companion",
+  "short_name": "Siri-Tiri",
+  "description": "Review Tiri's sound events and manage the home listening device.",
+  "start_url": "./companion-app-design.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f2eb",
+  "theme_color": "#174f48",
+  "icons": [
+    {
+      "src": "assets/cat-tiri-avatar.png",
+      "sizes": "256x256",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
