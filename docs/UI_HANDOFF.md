@@ -440,3 +440,8 @@ Treat the companion as the history and configuration surface, with the ESP32 rem
 - Default audio storage and inference to the home network/Pi. Make any future cloud upload a specific opt-in with retention controls.
 
 The mobile companion mockups are included in [ui-extended-mockups.svg](assets/ui-extended-mockups.svg) and [ui-pwa-trends-settings.svg](assets/ui-pwa-trends-settings.svg). Together they cover Today, Events, Review, Trends, and Settings. The trend screen shows counts from reviewed labels only; the settings screen puts mic control and clip retention in a clear privacy section.
+
+
+## Repo-native companion app mockup
+
+The responsive, interactive implementation is [companion-app-design.html](companion-app-design.html). It covers Today, Events, Trends, and Settings; saves context labels in browser local storage; and previews the round ESP32 state alongside the PWA on larger screens. Audio capture and Pi connectivity are simulated. This is the design prototype to use when AIDesigner is unavailable; it is not a production PWA or firmware build.
