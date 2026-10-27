@@ -242,6 +242,8 @@ Do not show waveform, exact model scores, confidence percentages, inferred inten
 
 ## Small-screen interaction: swipes and moving text
 
+![Swipe navigation and long-text treatments](assets/ui-small-screen-gestures-text.svg)
+
 The Android Wear and Apple Watch guidance is useful as a reference for a round, glanceable surface, but this ESP32 has no watch bezel or crown. Keep input touch-first and borrow only the patterns that translate.
 
 ![Gesture and text behavior exploration](assets/ui-small-screen-gestures-text.svg)
