@@ -178,6 +178,10 @@ The PWR and BOOT buttons are board-level controls, not assumed general-purpose a
 
 ## Round-screen event review refinement
 
+![Compact event review](assets/ui-review-event.svg)
+
+![Optional event details](assets/ui-review-details.svg)
+
 The panel is a true 466 × 466 circle. Treat the outer edge as unavailable for essential text or controls. Use a centered safe circle about 390 px in diameter (roughly 38 px of inset from the panel edge), then verify real touch coordinates and any bezel/enclosure occlusion on the hardware. Keep the title, event facts, all primary actions, and navigation inside that safe circle. The older review mockup placed some lower button corners too near the rim; use the compact mockup below as the revised layout reference.
 
 ### Event review options
