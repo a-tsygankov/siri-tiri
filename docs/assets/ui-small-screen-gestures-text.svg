@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="932" height="560" viewBox="0 0 932 560">
+<defs>
+ <clipPath id="left"><circle cx="233" cy="247" r="212"/></clipPath>
+ <clipPath id="right"><circle cx="699" cy="247" r="212"/></clipPath>
+ <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="none" stroke="#71d8ce" stroke-width="1.4"/></marker>
+</defs>
+<rect width="932" height="560" fill="#070d14"/>
+<text x="233" y="28" fill="#dce6ed" font-family="sans-serif" font-weight="700" font-size="17" text-anchor="middle">A · VISIBLE BUTTONS + OPTIONAL SWIPE</text>
+<text x="699" y="28" fill="#dce6ed" font-family="sans-serif" font-weight="700" font-size="17" text-anchor="middle">B · TRUNCATE FIRST, REVEAL ON REQUEST</text>
+<g clip-path="url(#left)">
+ <rect x="21" y="35" width="424" height="424" fill="#09121b"/>
+ <circle cx="233" cy="247" r="195" fill="none" stroke="#526877" stroke-dasharray="4 8" opacity=".5"/>
+ <text x="233" y="86" fill="#8fe6d0" font-family="sans-serif" font-size="13" text-anchor="middle" font-weight="700">RECENT EVENTS</text>
+ <text x="233" y="123" fill="#f5f7fb" font-family="sans-serif" font-size="23" text-anchor="middle" font-weight="700">Meow detected</text>
+ <g transform="translate(233 157)" fill="none" stroke="#55d6c2" stroke-width="4" stroke-linecap="round">
+  <path d="M-62 0h12 M-39 -8v16 M-23 -18v36 M-7 -7v14 M0 -26v52 M15 -8v16 M32 -18v36 M48 -7v14 M61 0h8"/>
+ </g>
+ <rect x="104" y="185" width="258" height="53" rx="18" fill="#13242e" stroke="#3d5968"/>
+ <text x="233" y="208" fill="#e7f2f5" font-family="sans-serif" font-size="14" text-anchor="middle">8:42 PM · Food</text>
+ <text x="233" y="228" fill="#91a4b0" font-family="sans-serif" font-size="11" text-anchor="middle">event 3 of 8</text>
+ <path d="M137 212 H111" stroke="#71d8ce" stroke-width="2" marker-end="url(#arrow)"/>
+ <path d="M329 212 H355" stroke="#71d8ce" stroke-width="2" marker-end="url(#arrow)"/>
+ <text x="233" y="265" fill="#b9c6ce" font-family="sans-serif" font-size="13" text-anchor="middle">Swipe left / right to browse too</text>
+ <rect x="144" y="286" width="178" height="46" rx="17" fill="#123c3a" stroke="#52cdbb"/>
+ <text x="233" y="315" fill="#e6fff9" font-family="sans-serif" font-size="15" text-anchor="middle" font-weight="600">Open / label event</text>
+ <text x="233" y="366" fill="#9aabb5" font-family="sans-serif" font-size="12" text-anchor="middle">Keep tap targets visible</text>
+</g>
+<circle cx="233" cy="247" r="212" fill="none" stroke="#263b4c" stroke-width="2"/>
+<g clip-path="url(#right)">
+ <rect x="487" y="35" width="424" height="424" fill="#09121b"/>
+ <circle cx="699" cy="247" r="195" fill="none" stroke="#526877" stroke-dasharray="4 8" opacity=".5"/>
+ <text x="699" y="86" fill="#8fe6d0" font-family="sans-serif" font-size="13" text-anchor="middle" font-weight="700">OPTIONAL EVENT DETAILS</text>
+ <text x="699" y="124" fill="#f5f7fb" font-family="sans-serif" font-size="22" text-anchor="middle" font-weight="700">What we detected</text>
+ <rect x="550" y="147" width="298" height="47" rx="16" fill="#14242e" stroke="#3b5361"/>
+ <text x="699" y="176" fill="#e3eef2" font-family="sans-serif" font-size="14" text-anchor="middle">Likely meow · medium confidence</text>
+ <text x="699" y="224" fill="#b9c6ce" font-family="sans-serif" font-size="13" text-anchor="middle">Long context, shown compactly:</text>
+ <rect x="550" y="236" width="298" height="48" rx="15" fill="#17252d"/>
+ <text x="699" y="266" fill="#c5d3da" font-family="sans-serif" font-size="13" text-anchor="middle">Near kitchen · before dinner…</text>
+ <rect x="607" y="298" width="184" height="42" rx="15" fill="#123c3a" stroke="#52cdbb"/>
+ <text x="699" y="325" fill="#e6fff9" font-family="sans-serif" font-size="14" text-anchor="middle" font-weight="600">Tap to read full context</text>
+ <text x="699" y="372" fill="#91a4b0" font-family="sans-serif" font-size="12" text-anchor="middle">Optional: one slow title marquee</text>
+ <path d="M585 396 H813" stroke="#42616d" stroke-width="2"/>
+ <path d="M590 396 H656 M813 396 H746" stroke="#71d8ce" stroke-width="2" marker-end="url(#arrow)"/>
+ <text x="699" y="424" fill="#9aabb5" font-family="sans-serif" font-size="11" text-anchor="middle">Only if the exact long label matters</text>
+</g>
+<circle cx="699" cy="247" r="212" fill="none" stroke="#263b4c" stroke-width="2"/>
+<text x="466" y="493" fill="#d6e1e7" font-family="sans-serif" font-size="14" text-anchor="middle" font-weight="600">Short, important facts stay still. A swipe supplements a button; it never hides the action.</text>
+<text x="466" y="521" fill="#8799a5" font-family="sans-serif" font-size="12" text-anchor="middle">Dashed rings indicate the approximate safe area, not a hardware boundary.</text>
+</svg>
