@@ -238,3 +238,47 @@ Do not show waveform, exact model scores, confidence percentages, inferred inten
 - [LVGL](https://github.com/lvgl/lvgl)
 - [SquareLine Studio](https://squareline.io/)
 - [Espressif ESP-Brookesia](https://github.com/espressif/esp-brookesia)
+
+
+## Small-screen interaction: swipes and moving text
+
+The Android Wear and Apple Watch guidance is useful as a reference for a round, glanceable surface, but this ESP32 has no watch bezel or crown. Keep input touch-first and borrow only the patterns that translate.
+
+![Gesture and text behavior exploration](assets/ui-small-screen-gestures-text.svg)
+
+### Touch strokes / swipes
+
+Use gestures as **shortcuts that duplicate visible actions**, not as the only way to act.
+
+- Good candidate: on Recent Events, a horizontal swipe moves to the previous or next event; keep visible previous/next tap targets as well.
+- Also reasonable: a standard swipe-back to close an optional detail page, provided a visible Back control remains.
+- Keep event labeling, mute/unmute, playback, and any action that commits or deletes data as explicit taps. A swipe may be misread or performed accidentally.
+- Avoid custom drawn shapes, multi-finger strokes, or gestures that depend on starting from an invisible region. The device is stationary, so these patterns add memorization without a clear benefit.
+- Do not make vertical swipes compete with a vertically scrolling page. If a screen scrolls, use the swipe for scrolling and reserve other gesture directions for a distinct navigation purpose.
+- Give each gesture a clear hint the first few times, or a small persistent affordance such as “Swipe to browse”; keep the visible controls usable even after the hint is dismissed.
+
+### Running / marquee text
+
+Moving text can help when the exact content matters and is too long to fit, but it should be an exception.
+
+- For the usual event screen, keep short event facts stationary. Prefer a short label, a second line, or ellipsis with a tap-to-expand details action.
+- Reserve marquee for a rare long title or device/room name that the user needs to identify in full. Show at most one moving line at a time, with a short delay before it starts and a pause at each end; do not animate every status field.
+- If the exact full text is important for a decision or annotation, tapping to open a stationary details view is more reliable than requiring the user to catch a moving line.
+- LVGL supports label overflow modes including scrolling/back-and-forth and circular scroll; that is a rendering capability, not a reason to make every long string move.
+- Treat sustained automatic movement as an accessibility concern. WCAG 2.2.2 recommends a way to pause, stop, or hide automatically moving or scrolling content that persists over five seconds alongside other content. For this device, the simpler design is to avoid persistent marquee or provide a tap/pause affordance.
+
+### Practical recommendation for Siri-Tiri
+
+- Use horizontal swipe only for browsing between events, as a duplicate of visible event navigation controls.
+- Use tap-to-reveal for long context and detector metadata. Do not auto-scroll the event alert or home screen.
+- Consider a slow, single-line marquee only for future user-provided names (for example, a long room or speaker name) after testing it on the actual panel. Keep the label fixed while its text moves, and stop motion when the user touches or leaves the screen.
+- The new comparison mockup demonstrates these choices; it is an interaction study, not a requirement to implement marquee.
+
+### Sources and limits
+
+- [Apple Human Interface Guidelines: Designing for watchOS](https://developer.apple.com/design/human-interface-guidelines/designing-for-watchos/) recommends glanceable, focused interactions; its hardware-specific crown guidance does not apply to this ESP32.
+- [Apple Human Interface Guidelines: Gestures](https://developer.apple.com/design/human-interface-guidelines/gestures/) describes swipe as a familiar way to reveal actions, dismiss views, and scroll.
+- [Android Wear: adaptive design for round displays](https://developer.android.com/design/ui/wear/guides/foundations/adaptive-design) describes distinct layout needs for round scrolling and non-scrolling screens.
+- [Android Wear: media controls](https://developer.android.com/design/ui/wear/guides/patterns/media/controls) provides a useful precedent: long media titles can scroll while secondary artist text truncates, with minimum tap targets preserved.
+- [LVGL 9 label overflow](https://lvgl.io/docs/open/9.4/details/widgets/label.html) documents the available label scrolling modes.
+- [W3C WCAG 2.2.2: Pause, Stop, Hide](https://www.w3.org/WAI/WCAG22/Understanding/pause-stop-hide) explains the pause/stop/hide guideline for persistent moving content. Its formal applicability depends on the interface and context; here it is used as a general accessibility design reference.
