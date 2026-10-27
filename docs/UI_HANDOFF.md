@@ -174,3 +174,63 @@ The PWR and BOOT buttons are board-level controls, not assumed general-purpose a
 
 - Board: [Waveshare ESP32-S3 Touch AMOLED 1.75 hardware reference](https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75/blob/main/HARDWARE_REFERENCE.md)
 - Project: [siri-tiri](https://github.com/a-tsygankov/siri-tiri)
+
+
+## Round-screen event review refinement
+
+The panel is a true 466 × 466 circle. Treat the outer edge as unavailable for essential text or controls. Use a centered safe circle about 390 px in diameter (roughly 38 px of inset from the panel edge), then verify real touch coordinates and any bezel/enclosure occlusion on the hardware. Keep the title, event facts, all primary actions, and navigation inside that safe circle. The older review mockup placed some lower button corners too near the rim; use the compact mockup below as the revised layout reference.
+
+### Event review options
+
+| Pattern | First screen | Optional details | Trade-off |
+|---|---|---|---|
+| **Quick label + More (recommended)** | “Meow detected,” brief timestamp, and four large context choices: Food, Attention, Play, Unsure. One tap saves. | “More” opens additional context labels, clip playback, model confidence band, and outcome feedback. | Fast for routine examples; details stay available without crowding every event. |
+| **One question at a time** | Ask “What was happening?” and show one large choice with previous/next arrows; tap choice to save. | Browse all labels, replay, and add an outcome on a second page. | Largest tap target and clearest focus, but slower when labeling many events. |
+| **Event card first** | Show “Meow detected,” time, and a large “Review” action. | The next screen contains labels, playback, and details. | Very calm and uncluttered, but adds a tap before the main task. |
+
+Use **Quick label + More** as the default because the common task remains one tap while the optional fields are genuinely optional. If the four labels prove too dense at the device’s actual viewing distance, fall back to **One question at a time** rather than shrinking the controls.
+
+### Compact review workflow
+
+1. The event alert opens directly to the quick-label screen.
+2. The screen shows the event type and time in the upper half, plus four context buttons in a centered 2 × 2 grid.
+3. Tapping a context button saves immediately and returns to Listening. A small **More details** link opens the optional page.
+4. The optional page can include:
+   - Replay clip (explicit tap; pause listening during playback).
+   - Approximate duration and time.
+   - Detector label and confidence band, such as “Likely meow” / “Possible cat sound”; avoid false precision.
+   - Additional context: Greeting, Door, Brushing/handling, Other.
+   - “What happened next?”: Ate, Approached, Settled, Meowed again, No clear response, Unsure.
+5. A visible Back/Close action returns to the quick-label page without losing any choice. A label is not required to dismiss the event.
+
+Do not show waveform, exact model scores, confidence percentages, inferred intent, household context, and feedback controls all at once. Optional evidence should be disclosed on demand and described as evidence, not a translation.
+
+### Round-layout and touch rules
+
+- Keep important content inside a centered safe circle about 390 px across. Avoid placing button corners, status text, or back controls at the very bottom or far sides.
+- Prefer a 2 × 2 button grid centered below the event facts. Target at least 48 px control height and leave visible gaps between hit areas.
+- Use short labels and 1–2 text lines. Truncate secondary metadata instead of wrapping into the curved edge.
+- Avoid radial menus that put small targets around the circumference. A circular screen does not make edge targets easier to reach.
+- Avoid swipe-only navigation. A tap target for **More details**, plus visible Back, works for either hand and avoids accidental edge gestures.
+- Use display masks or circular clipping only for artwork and background decoration; place actual text and hit targets inside the safe circle.
+- Validate the layout on the 466 × 466 panel with the bezel and enclosure installed. The SVG is a layout guide, not a touch-calibration guarantee.
+
+## UI framework options
+
+| Option | What it provides | Fit for this device |
+|---|---|---|
+| **LVGL 9 with Waveshare’s board support package (recommended)** | Embedded widgets, layouts, touch input, and display refresh; Waveshare publishes examples for this exact 466 × 466 panel, including LVGL 9, touch, and an LVGL SquareLine demo. | Best match for this app and the exact hardware. Start from the board vendor’s LVGL example/BSP rather than mixing in another board’s display driver. Choose ESP-IDF or Arduino based on the existing firmware; keep the LVGL major version aligned with that example. |
+| **SquareLine Studio (optional visual editor)** | Desktop UI editor that exports LVGL UI code; supports round-display project settings. | Use it to explore layout and generate static screen structure/assets, while keeping event logic, network state, and component behavior in hand-written firmware. It complements LVGL; it is not a replacement GUI runtime. Confirm its LVGL export version matches the firmware. |
+| **Arduino_GFX / direct drawing** | Lower-level drawing primitives and text rendering. | Fine for a tiny fixed screen with a few hand-drawn controls, but it provides less reusable widget and interaction structure. The vendor supports it for basic display examples, while its richer touch UI examples use LVGL. |
+| **ESP-Brookesia** | Espressif’s broader product/HMI framework, including app/runtime/service layers on top of GUI components. | Technically available in the vendor’s firmware examples, but likely more framework than this small, single-purpose companion needs. Borrow patterns or examples only if the project later grows into a multi-app device. |
+
+**Recommendation:** Keep the product UI on LVGL using the Waveshare BSP and its compatible LVGL version. Use SquareLine Studio only if it speeds up screen composition. The strongest evidence is the board vendor’s exact-device LVGL examples and factory SquareLine/LVGL demo; the recommendation is an engineering judgment based on the app’s small screen count and interaction needs.
+
+### Framework references
+
+- [Waveshare board repository and example catalog](https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75)
+- [Waveshare examples: LVGL widgets, touch, SquareLine, and board-specific requirements](https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75/blob/main/docs/examples.md)
+- [Waveshare board support component](https://components.espressif.com/components/waveshare/esp32_s3_touch_amoled_1_75)
+- [LVGL](https://github.com/lvgl/lvgl)
+- [SquareLine Studio](https://squareline.io/)
+- [Espressif ESP-Brookesia](https://github.com/espressif/esp-brookesia)
