@@ -445,3 +445,7 @@ The mobile companion mockups are included in [ui-extended-mockups.svg](assets/ui
 ## Repo-native companion app mockup
 
 The responsive, interactive implementation is [companion-app-design.html](companion-app-design.html). It covers Today, Events, Trends, and Settings; saves context labels in browser local storage; and previews the round ESP32 state alongside the PWA on larger screens. Audio capture and Pi connectivity are simulated. This is the design prototype to use when AIDesigner is unavailable; it is not a production PWA or firmware build.
+
+### PWA shell implementation
+
+The companion design now has a Web App Manifest, a service worker that caches the app shell and Tiri avatar, and an offline fallback page. Event labels remain browser-local. The PWA does not yet sync with the Pi, receive detections, or store audio clips. Install behavior requires serving the `docs/` directory over HTTPS (or localhost); opening the HTML directly from disk will not enable service workers.
