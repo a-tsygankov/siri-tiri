@@ -9,7 +9,7 @@ This is a personalized pattern-learning tool, not a literal cat-language transla
 ## Existing hardware and services
 
 - **Waveshare ESP32-S3 Touch AMOLED 1.75**: ESP32-S3R8, 8 MB PSRAM, dual microphones with ES7210 audio codec, speaker, Wi-Fi, touch display, TF card slot. Use as the room audio endpoint and user interface.
-- **Raspberry Pi running Home Assistant**: run the initial audio inference service here, subject to measuring the Pi model and available CPU/RAM.
+- **Raspberry Pi running Home Assistant**: later always-on inference target, subject to confirming Pi model, Home Assistant installation type, CPU, and RAM. Use the Windows 11 laptop as the first YAMNet development and batch-analysis host.
 - **Sonos speakers**: use for optional playback/replies through Home Assistant. Do not plan to use their built-in microphones as audio inputs: Home Assistant exposes microphone state for supported models, not a general audio stream.
 
 ## Enclosure findings
@@ -23,32 +23,33 @@ This is a personalized pattern-learning tool, not a literal cat-language transla
 
 ## Proposed architecture
 
-1. The ESP32 captures audio locally and detects candidate vocalization windows. It sends short clips or audio frames to a service on the Pi over the home network.
-2. The Pi runs YAMNet using TensorFlow Lite to score general audio classes, especially Meow and Cat. YAMNet is an event detector and feature extractor; its classes do not identify Tiri's needs.
-3. An inference service stores events and YAMNet embeddings, and later runs a small Tiri-specific classifier trained from reviewed examples.
-4. Home Assistant provides context (for example, time, feeder state, or nearby relevant entities), notifications, and optional Sonos playback.
-5. The ESP32 display shows recent detections, confidence, and simple feedback controls. Use an explicit mute control and avoid retaining unreviewed audio indefinitely.
+1. The ESP32 captures audio locally and detects candidate vocalization windows. It sends short clips or audio frames over the home LAN to a configurable inference service.
+2. Run the first YAMNet service on the Windows 11 laptop for recorded-clip experiments, dataset preparation, and live ESP32 trials. Keep the service contract and model interface independent of the host so the same role can move to the Raspberry Pi later.
+3. The local service runs YAMNet/TensorFlow Lite to score general audio classes, especially Meow and Cat, and returns scores/embeddings. YAMNet detects sound classes; it does not identify Tiri's needs.
+4. A Cloudflare Worker provides the internet-facing API and control plane: device pairing/authentication, configuration, event metadata and feedback sync, health/version endpoints, and optional access to explicitly retained clips. D1 stores structured event/configuration data; R2 is optional for user-approved audio objects.
+5. Home Assistant provides household context, notifications, and optional Sonos playback. Keep this integration optional and independent of the YAMNet service.
+6. The ESP32 screen shows local detections and sync status. It should remain usable when the laptop/Pi or internet is offline, and queued event metadata should sync later.
 
-Keep the audio service loosely coupled to Home Assistant (for example, a small HTTP API or MQTT events) so inference can be developed and benchmarked independently.
+Keep inference behind a versioned local HTTP API, separate from the Cloudflare API. Configure the local inference URL independently of the device firmware build (for example, a stable LAN hostname or settings value), so moving the service from Windows to the Pi is a host/configuration change, not a product redesign.
 
 ## Phases
 
 ### 0. Establish the baseline
 
-- Record exact Raspberry Pi model, RAM, Home Assistant installation type, and available disk space.
+- Record Windows 11 laptop CPU/RAM/GPU and Python environment; also record exact Raspberry Pi model, RAM, Home Assistant installation type, and available disk space.
 - Confirm ESP32 board audio capture format, microphone channel behavior, and speaker playback.
-- Select local transport and storage defaults; keep audio processing on the LAN unless explicitly configured otherwise.
-- Document audio retention and delete controls.
+- Define separate versioned contracts for local inference and Cloudflare device/event APIs; define a config switch for the inference host.
+- Set up Cloudflare development variables and CI secrets using the feedme2 pattern; do not commit real secrets.
+- Select local audio retention defaults and document delete controls. Keep raw audio on the LAN by default.
 
-**Exit criteria:** Pi can receive and save a short test clip from the ESP32; no cloud service is required.
+**Exit criteria:** Windows laptop can receive a short test clip from the ESP32 through the local inference API; Cloudflare is not required for local capture/classification.
 
 ### 1. Detect and inspect sounds
 
-- Deploy YAMNet on the Pi using a compatible TensorFlow Lite runtime.
-- Start with recorded WAV files, then process short clips from the ESP32.
+- First run YAMNet on Windows 11 using a pinned CPU TensorFlow/TFLite environment; begin with recorded WAV files and batch resource-data analysis, then process short clips from the ESP32.
 - Log timestamps and class scores; show likely Meow/Cat detections on the ESP32 or Home Assistant.
 - Include background/no-meow examples and tune thresholds against actual room recordings.
-- Measure model startup time, inference latency, CPU, and memory while Home Assistant is running.
+- Measure model startup time, inference latency, CPU, and memory on the laptop. Later deploy the same API/model artifact to the Pi using its compatible Linux ARM64 TFLite runtime and benchmark alongside Home Assistant.
 
 **Exit criteria:** detection works on Tiri's real clips and ordinary household sounds, with measured resource use and a tunable false-positive rate.
 
@@ -92,8 +93,8 @@ Keep the audio service loosely coupled to Home Assistant (for example, a small H
 
 ## Initial technical choices
 
-- **Detection baseline:** YAMNet on the Raspberry Pi, not the ESP32. The standard float model is approximately 14.2 MB and the stock graph has preprocessing/runtime compatibility complications on microcontrollers.
-- **Feature learning:** YAMNet audio embeddings plus a small downstream classifier, developed on the Pi or another computer.
+- **Detection baseline:** YAMNet on a general-purpose host, not the ESP32. Start on Windows 11 CPU for development and move the inference service to the Pi once the pipeline is useful. The standard float model is approximately 14.2 MB and the stock graph has preprocessing/runtime compatibility complications on microcontrollers.
+- **Feature learning:** YAMNet audio embeddings plus a small downstream classifier, developed and evaluated on the Windows laptop; deploy runtime inference on the Pi later if desired.
 - **Audio input:** Waveshare dual microphones first. Sonos microphones are not assumed available through a supported raw-audio API.
 - **Output:** Waveshare speaker for local feedback during development; Sonos via Home Assistant for optional room playback.
 - **Inference cadence:** analyze candidate clips/windows rather than run expensive inference continuously where possible.
@@ -102,7 +103,7 @@ Keep the audio service loosely coupled to Home Assistant (for example, a small H
 
 - A meow's meaning is context-dependent. Public labels and model scores cannot prove hunger, distress, or intent.
 - Public cat datasets are small and recorded in limited/artificial contexts; they cannot substitute for Tiri-specific examples.
-- The Pi's model and HA installation details are unknown. Benchmark resource use before choosing deployment packaging.
+- The Pi model and HA installation type are unknown. Benchmark laptop and Pi resource use before choosing deployment packaging. Windows TensorFlow CPU packages are available, while native-Windows GPU support has version constraints; keep the first baseline CPU-focused.
 - Playback can contaminate microphone input and cause feedback loops; use cooldowns and test echo cancellation.
 - Audio contains household privacy information. Prefer local processing, visible listening/mute status, short retention, and user-controlled deletion.
 - Enclosure fit is not confirmed until the supplied battery and physical board dimensions are measured; treat public printable models as prototypes until test-fitted.
@@ -117,3 +118,56 @@ Keep the audio service loosely coupled to Home Assistant (for example, a small H
 - [Waveshare board hardware reference](https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75/blob/main/HARDWARE_REFERENCE.md)
 - [MakerWorld battery-space case model](https://makerworld.com/en/models/2477655)
 - [Printables case for 1.75-G variant](https://www.printables.com/model/1614880-waveshare_esp32-s3-touch-amoled-175-g-simple-case/related)
+
+
+## Proposed host and cloud deployment
+
+### Responsibilities
+
+| Component | Runs where | Responsibility |
+|---|---|---|
+| **YAMNet inference service** | Windows 11 laptop first; Raspberry Pi later | Receives short LAN audio clips, runs YAMNet, and returns sound-class scores plus optional embeddings. Keep the HTTP contract stable across hosts. |
+| **Cloud API / control plane** | Cloudflare Worker | Device pairing and authentication, configuration, event metadata/label sync, health/version endpoints, and optional controlled clip access. |
+| **Structured data** | Cloudflare D1 | Event metadata, labels/outcomes, device records, settings, and sync state. |
+| **Audio objects** | Local disk by default; optional Cloudflare R2 | Keep raw audio local unless retention/upload is explicitly enabled. R2 can store user-approved clips; metadata-only cloud sync is the privacy-first default. |
+| **Home automation** | Raspberry Pi / Home Assistant | Optional context, notifications, and Sonos playback; do not make this a dependency of audio classification. |
+
+### Laptop-to-Pi portability
+
+- Make the inference service a small standalone application with a versioned local endpoint such as POST /v1/classify and GET /health; do not couple the YAMNet adapter to Home Assistant or Cloudflare Worker code.
+- Keep model input/output normalization, label mapping, and response schema in shared documentation/fixtures. Host-specific packaging may differ: Windows can use the TensorFlow Lite interpreter included with TensorFlow; Raspberry Pi can use its compatible TFLite runtime.
+- Start CPU-only on Windows. TensorFlow's current install guidance says native Windows GPU support stopped after TensorFlow 2.10; CPU is sufficient for initial clip analysis and avoids tying the design to one GPU/runtime.
+- Store the inference base URL in device configuration (or a stable LAN DNS/DHCP name). Moving from Windows to Pi should require changing that endpoint and deploying the same service contract, not reflashing for model behavior changes.
+- Keep a bounded local clip/metadata queue so classification and review can continue if Cloudflare is unavailable. Upload/sync should retry independently of local inference.
+
+### Cloudflare implementation pattern
+
+Use feedme2 as the implementation reference for the cloud tier, not as a requirement to use identical product logic:
+
+- TypeScript Worker API with Hono, D1 migrations, Wrangler local development, and environment-specific configuration.
+- GitHub Actions for tests, deployment, and required version bumps. Reuse the tier/version approach where it fits (firmware, Worker API, and schema).
+- .dev.vars.example plus ignored local .dev.vars; GitHub Actions secrets for deploy credentials; Cloudflare Worker secrets for runtime signing keys and external API credentials.
+- Structured logs and a debug/status endpoint should record event IDs, request IDs, versions, latency, and error codes—but never raw audio, passwords, or token values.
+- Use per-device credentials that can be revoked/rotated. Never embed a Cloudflare account API token or one shared administrative key in ESP32 firmware. Store only a hash of device tokens server-side if the chosen auth design supports it.
+- Keep versioned API contracts and sample payload fixtures shared between firmware, local inference client, simulator, and Worker tests. Add an inference-service version separately from the firmware/UI version.
+- Treat Cloudflare as the cloud data/API tier, not the initial YAMNet runtime. Cloudflare Workers AI exposes its own managed model catalog, while YAMNet's documented path uses TensorFlow/TensorFlow Hub. Keep YAMNet on the local Windows/Pi service for this first version. This is an architecture recommendation based on the current runtimes, not a claim that custom model serving on Cloudflare is impossible.
+
+### Development and deployment sequence
+
+1. **Windows prototype:** install the pinned TensorFlow/YAMNet dependencies; run a local API against the public sample set and Tiri recordings; measure inference and resource use.
+2. **ESP32 LAN integration:** send candidate clips to the Windows service, receive scores, and display/log the candidate event without Cloudflare.
+3. **Cloud API:** add pairing/device auth, event metadata and feedback sync, D1 migrations, runtime secrets, structured logging, and CI/deployment modeled on feedme2.
+4. **Pi migration:** deploy the same inference API on the Pi, change the configured base URL, and compare latency/CPU/memory while Home Assistant is active. Keep local inference and cloud sync independently testable.
+5. **Optional clips in cloud:** only after retention/deletion behavior is implemented; store reviewed/explicitly retained clips in R2 and keep IDs/metadata in D1.
+
+### Deployment references
+
+- [feedme2 README](https://github.com/a-tsygankov/feedme2/blob/main/README.md) — Hono Worker + D1, local Wrangler workflow, workspace layout, and versioning.
+- [feedme2 version check workflow](https://github.com/a-tsygankov/feedme2/blob/main/.github/workflows/version-check.yml) — CI-enforced version bumps.
+- [feedme2 Worker configuration](https://github.com/a-tsygankov/feedme2/blob/main/backend/wrangler.toml) — D1/R2 bindings, cron, observability, and runtime variable pattern.
+- [TensorFlow on Windows](https://www.tensorflow.org/install/pip#install_tensorflow_with_pip) — current Windows CPU/GPU installation constraints.
+- [TensorFlow YAMNet transfer-learning guide](https://www.tensorflow.org/tutorials/audio/transfer_learning_audio) — YAMNet embeddings and downstream classifier workflow.
+- [Cloudflare Worker secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
+- [Cloudflare D1](https://developers.cloudflare.com/d1/)
+- [Cloudflare R2](https://developers.cloudflare.com/r2/)
+- [Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits/)
