@@ -3,18 +3,20 @@
 <g clip-path="url(#c)">
 <rect width="466" height="466" fill="#09121b"/>
 <circle cx="233" cy="233" r="218" fill="none" stroke="#263b4c" stroke-width="2"/>
-<text x="233" y="62" fill="#8fe6d0" font-family="sans-serif" font-size="17" text-anchor="middle" font-weight="700">SIRI · TIRI  /  EVENT</text>
-<text x="233" y="111" fill="#f5f7fb" font-family="sans-serif" font-size="29" text-anchor="middle" font-weight="700">Meow detected</text>
-<g transform="translate(233 158)" fill="none" stroke="#55d6c2" stroke-width="5" stroke-linecap="round">
-<path d="M-92 0h15 M-65 -11v22 M-44 -22v44 M-22 -9v18 M0 -34v68 M22 -12v24 M44 -23v46 M66 -8v16 M88 0h8"/>
+<circle cx="233" cy="233" r="194" fill="none" stroke="#526877" stroke-width="1.5" stroke-dasharray="4 8" opacity=".55"/>
+<text x="233" y="53" fill="#8fe6d0" font-family="sans-serif" font-size="15" text-anchor="middle" font-weight="700">SIRI · TIRI  /  EVENT</text>
+<text x="233" y="97" fill="#f5f7fb" font-family="sans-serif" font-size="25" text-anchor="middle" font-weight="700">Meow detected</text>
+<g transform="translate(233 133)" fill="none" stroke="#55d6c2" stroke-width="4" stroke-linecap="round">
+<path d="M-66 0h12 M-44 -8v16 M-28 -17v34 M-11 -7v14 M0 -26v52 M16 -8v16 M32 -17v34 M49 -7v14 M65 0h10"/>
 </g>
-<text x="233" y="216" fill="#aebbc8" font-family="sans-serif" font-size="15" text-anchor="middle">Today · 8:42 PM · 1.8 sec</text>
-<text x="233" y="246" fill="#f5b98e" font-family="sans-serif" font-size="15" text-anchor="middle">Context unclear · tell me what happened</text>
-<g font-family="sans-serif" font-size="18" font-weight="600" text-anchor="middle">
-<rect x="42" y="273" width="181" height="53" rx="19" fill="#103c3a" stroke="#52cdbb"/><text x="132" y="307" fill="#dcfff8">Food</text>
-<rect x="243" y="273" width="181" height="53" rx="19" fill="#392b32" stroke="#dc8d9a"/><text x="333" y="307" fill="#fff0f2">Attention</text>
-<rect x="42" y="341" width="181" height="53" rx="19" fill="#15374c" stroke="#56b7e6"/><text x="132" y="375" fill="#e3f5ff">Play</text>
-<rect x="243" y="341" width="181" height="53" rx="19" fill="#292d3c" stroke="#8f91bd"/><text x="333" y="375" fill="#eeeefe">Unsure</text>
+<text x="233" y="177" fill="#aebbc8" font-family="sans-serif" font-size="14" text-anchor="middle">Today · 8:42 PM · 1.8 sec</text>
+<text x="233" y="213" fill="#f5b98e" font-family="sans-serif" font-size="14" text-anchor="middle">What was happening?</text>
+<g font-family="sans-serif" font-size="17" font-weight="600" text-anchor="middle">
+<rect x="107" y="230" width="118" height="48" rx="17" fill="#103c3a" stroke="#52cdbb"/><text x="166" y="260" fill="#dcfff8">Food</text>
+<rect x="241" y="230" width="118" height="48" rx="17" fill="#392b32" stroke="#dc8d9a"/><text x="300" y="260" fill="#fff0f2">Attention</text>
+<rect x="107" y="290" width="118" height="48" rx="17" fill="#15374c" stroke="#56b7e6"/><text x="166" y="320" fill="#e3f5ff">Play</text>
+<rect x="241" y="290" width="118" height="48" rx="17" fill="#292d3c" stroke="#8f91bd"/><text x="300" y="320" fill="#eeeefe">Unsure</text>
 </g>
-<text x="233" y="423" fill="#9baab5" font-family="sans-serif" font-size="14" text-anchor="middle">Tap once · correct it later</text>
+<text x="233" y="382" fill="#9fe8de" font-family="sans-serif" font-size="16" font-weight="600" text-anchor="middle">More details  ›</text>
+<text x="233" y="414" fill="#82929f" font-family="sans-serif" font-size="12" text-anchor="middle">Tap once to save · change it later</text>
 </g></svg>
