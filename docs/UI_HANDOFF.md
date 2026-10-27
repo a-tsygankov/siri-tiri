@@ -290,6 +290,10 @@ Moving text can help when the exact content matters and is too long to fit, but 
 
 The [feedme2 cat asset set](https://github.com/a-tsygankov/feedme2/tree/main/assets/cats) contains 12 transparent silhouette masters (A1–C4). Its existing renderer produces 256 px alpha-mask PNGs for the web and 130/88 px white-on-transparent PNGs for LVGL recoloring. That gives Siri-Tiri a shared, crisp cat identity across the ESP32 and web UI without adding a new illustration style.
 
+![Tiri silhouette](assets/cat-tiri-avatar.png)
+
+The PNG above is a directly rendered, colorized preview of the A1 silhouette. The cross-device layout mockup follows it.
+
 ![Tiri silhouette used across ESP32 and web event history](assets/ui-cat-avatar-system.svg)
 
 ### Visual roles
