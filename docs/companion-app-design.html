@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f6f2eb">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#174f48"><link rel="manifest" href="manifest.webmanifest">
 <title>Tiri · Companion</title>
 <style>
 :root{color-scheme:light;--paper:#f6f2eb;--surface:#fffdf9;--ink:#202b2d;--muted:#687778;--line:#dce3df;--forest:#174f48;--forest2:#276d61;--mint:#dff0e9;--peach:#e7b894;--amber:#b77427;--amberbg:#f8ecd8;--rose:#a84350;--shadow:0 16px 48px #172a2412}
@@ -65,5 +65,6 @@ document.querySelector("#skip").onclick=close;document.querySelector("#closeModa
 function updateStatus(){let state=muted?"MUTED":offline?"PI OFFLINE":"LISTENING";document.querySelector("#roundStatus").textContent="● "+state;document.querySelector("#roundMeta").textContent=muted?"Mic off · no audio capture":offline?"Mic on · Pi offline":"Mic on · Pi connected";document.querySelector("#heroStatus").textContent=muted?"Muted · microphone off":offline?"Listening · Pi offline":"Listening · microphone on";document.querySelector("#heroPi").textContent=offline?"● Pi offline":"● Pi online";document.querySelector("#syncText").textContent=offline?"Device offline":"Home Pi connected";document.querySelector("#settingsConnection").textContent=offline?"Tiri’s room · Pi offline":"Tiri’s room · Pi connected";document.querySelector("#micSetting").textContent=muted?"Microphone is muted":"Listening is on";document.querySelector("#deviceBadge").textContent=offline?"Offline":"Online";document.querySelector("#mute").setAttribute("aria-pressed",String(muted));document.querySelector("#muteDevice").textContent=muted?"Unmute mic":"Mute mic";document.querySelector("#offlineDevice").textContent=offline?"Reconnect Pi":"Pi offline"}
 document.querySelector("#muteDevice").onclick=()=>{muted=!muted;updateStatus()};document.querySelector("#mute").onclick=()=>{muted=!muted;updateStatus()};document.querySelector("#offlineDevice").onclick=()=>{offline=!offline;updateStatus()};document.querySelectorAll("[data-toggle]").forEach(b=>b.onclick=()=>b.setAttribute("aria-pressed",String(b.getAttribute("aria-pressed")!=="true")));
 render();updateStatus();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(() => {});
 </script>
 </body></html>
