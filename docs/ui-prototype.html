@@ -1,53 +1,92 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Siri-Tiri UI prototype</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#08121b">
+<title>Siri-Tiri · Home</title>
 <style>
-:root{color-scheme:dark;--bg:#071019;--panel:#101b25;--panel2:#172733;--ink:#f5f7fb;--muted:#aebbc8;--line:#314654;--peach:#f3c9a8;--amber:#f2b36e;--teal:#59cdbc}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 50% 0,#152635,var(--bg) 60%);color:var(--ink);font:16px/1.45 system-ui,sans-serif;min-height:100vh}
-main{max-width:1000px;margin:auto;padding:28px 20px 50px}header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}h1{font-size:clamp(24px,4vw,36px);margin:0}p{color:var(--muted)}.toolbar{display:flex;gap:8px;flex-wrap:wrap}
-button{font:inherit;color:var(--ink);background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:12px 16px;cursor:pointer;min-height:48px}
-button:hover,button:focus-visible{border-color:var(--teal);outline:2px solid transparent}button[aria-pressed="true"],button.primary{background:#123c3a;border-color:#367d74;color:#bdf4eb}
-.grid{display:grid;grid-template-columns:minmax(280px,1fr) minmax(280px,1fr);gap:24px;align-items:start;margin-top:28px}
-.device-wrap{display:grid;justify-items:center;gap:12px}.device{width:min(100%,466px);aspect-ratio:1;border-radius:50%;background:#09121b;border:2px solid #263b4c;box-shadow:0 25px 80px #0008;position:relative;display:flex;align-items:center;justify-content:center;text-align:center;overflow:hidden}
-.safe{width:84%;height:84%;border:1px dashed #314654;border-radius:50%;position:absolute;pointer-events:none}
-.screen{z-index:1;width:78%;display:flex;align-items:center;flex-direction:column;gap:8px}.avatar{width:116px;height:116px;object-fit:contain;filter:drop-shadow(0 2px 14px #f3c9a822)}.name{font-size:24px;font-weight:700}.status{display:flex;align-items:center;gap:8px;color:var(--amber);font-weight:700}.dot{width:10px;height:10px;border-radius:50%;background:currentColor}.sub{font-size:13px;color:var(--muted)}.wave{color:var(--teal);letter-spacing:4px;font-size:22px}.link{color:#9fe8de;font-size:14px;margin-top:8px}
-.card{background:var(--panel);border:1px solid #263b4c;border-radius:22px;padding:22px}.card h2{margin:0 0 8px;font-size:21px}.row{display:flex;align-items:center;gap:14px;background:var(--panel2);padding:14px;border-radius:16px;margin:14px 0}.row img{width:48px;height:48px;object-fit:contain}.row strong{display:block}.pill{margin-left:auto;border-radius:20px;background:#123c3a;color:#9fe8de;padding:5px 10px;font-size:12px;white-space:nowrap}.pill.pending{background:#3d2c24;color:#f2c08d}.choices{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}.choices button{min-height:56px}.note{font-size:13px;color:var(--muted);margin-top:18px}.hidden{display:none}
-@media(max-width:700px){.grid{grid-template-columns:1fr}.device{width:min(100%,390px)}main{padding:20px 14px}}
-@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+:root{color-scheme:dark;--bg:#08121b;--panel:#101d28;--panel2:#172733;--line:#2a414f;--ink:#f5f7fb;--muted:#aebbc8;--peach:#f3c9a8;--amber:#f2b36e;--teal:#59cdbc;--red:#ff9a9a}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+button,input{font:inherit}button{color:inherit;background:var(--panel2);border:1px solid var(--line);border-radius:13px;padding:11px 15px;min-height:46px;cursor:pointer}button:hover{border-color:var(--teal)}button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid var(--teal);outline-offset:2px}
+button.primary{background:#123c3a;border-color:#367d74;color:#c4f4eb}button.danger{color:#ffb7b7}button.selected{border-color:var(--teal);box-shadow:inset 0 0 0 1px var(--teal)}
+a{color:#9fe8de}header{border-bottom:1px solid #213441;background:#0b1721;position:sticky;top:0;z-index:4}
+.header-inner{max-width:1100px;padding:14px 20px;margin:auto;display:flex;align-items:center;gap:20px}.brand{display:flex;align-items:center;gap:10px;margin-right:auto}.brand img{width:34px;height:34px;object-fit:contain}.brand strong{font-size:17px}.brand span{display:block;color:var(--muted);font-size:12px}.top-status{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}.dot{width:9px;height:9px;background:var(--teal);border-radius:50%;display:inline-block}.dot.off{background:var(--amber)}nav{display:flex;gap:6px}nav button{background:transparent;border-color:transparent;min-height:40px;padding:8px 12px;color:var(--muted)}nav button[aria-current=page]{color:var(--ink);background:var(--panel2);border-color:var(--line)}
+main{max-width:1100px;margin:28px auto;padding:0 20px 60px}.page-title{display:flex;align-items:end;justify-content:space-between;gap:20px;margin-bottom:22px}.page-title h1{font-size:clamp(25px,4vw,34px);line-height:1.15;margin:0}.page-title p{color:var(--muted);margin:7px 0 0}.grid{display:grid;grid-template-columns:minmax(300px,0.9fr) minmax(330px,1.1fr);gap:20px}.panel{background:var(--panel);border:1px solid #243947;border-radius:20px;padding:22px}.panel h2{font-size:19px;margin:0 0 6px}.muted{color:var(--muted)}.small{font-size:13px}.device-wrap{display:grid;justify-items:center;gap:15px}.device{width:min(100%,390px);aspect-ratio:1;border:2px solid #263b4c;border-radius:50%;background:#09121b;box-shadow:0 24px 70px #0007;position:relative;display:grid;place-items:center;overflow:hidden}.safe{position:absolute;width:84%;height:84%;border:1px dashed #314654;border-radius:50%;pointer-events:none}.screen{position:relative;z-index:1;text-align:center;width:76%;display:flex;align-items:center;flex-direction:column;gap:7px}.avatar{width:96px;height:96px;object-fit:contain}.name{font-size:23px;font-weight:700}.state{font-weight:750;color:var(--amber);display:flex;align-items:center;gap:8px}.state.muted{color:#bdc5cc}.state.offline{color:var(--red)}.meta{font-size:12px;color:var(--muted)}.wave{letter-spacing:4px;color:var(--teal);font-size:20px}.screen-link{border:0;background:transparent;color:#9fe8de;min-height:42px}
+.controls{display:flex;gap:9px;flex-wrap:wrap;justify-content:center}.event-list{display:grid;gap:10px;margin-top:18px}.event{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:12px;align-items:center;background:var(--panel2);border:1px solid #2b424f;border-radius:15px;padding:12px}.event img{width:44px;height:48px;object-fit:contain}.event strong{display:block}.event-meta{font-size:13px;color:var(--muted)}.badge{display:inline-flex;align-items:center;gap:5px;padding:5px 9px;border-radius:20px;background:#3d2c24;color:#f2c08d;font-size:12px;white-space:nowrap}.badge.done{background:#123c3a;color:#9fe8de}.event button{padding:8px 11px;min-height:40px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0}.filters button{min-height:40px;padding:8px 12px}.formrow{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:15px 0;border-bottom:1px solid #263a46}.formrow:last-child{border:0}.switch{min-width:70px}.empty{padding:34px 14px;text-align:center;color:var(--muted)}.empty img{width:72px;height:72px;object-fit:contain}.notice{border:1px solid #6e5637;background:#2b241c;color:#f3d2a8;border-radius:12px;padding:11px 13px;font-size:13px}
+dialog{width:min(520px,calc(100% - 28px));background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:20px;padding:0;box-shadow:0 30px 100px #000b}dialog::backdrop{background:#02070bbd}.modal{padding:22px}.modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.modal-head h2{margin:0}.close{padding:7px 12px;min-height:40px}.modal-cat{display:flex;align-items:center;gap:12px;margin:16px 0}.modal-cat img{width:54px;height:58px;object-fit:contain}.labels{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:17px 0}.labels button{min-height:54px}.modal-footer{display:flex;justify-content:space-between;gap:8px;margin-top:18px}
+.hidden{display:none!important}.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#123c3a;border:1px solid #367d74;border-radius:14px;padding:10px 16px;z-index:8}
+@media(max-width:760px){.header-inner{flex-wrap:wrap;gap:10px}.top-status{order:3;width:100%}.grid{grid-template-columns:1fr}.page-title{align-items:start;flex-direction:column}.panel{padding:17px}.event{grid-template-columns:40px minmax(0,1fr)}.event img{width:38px}.event .badge{grid-column:2;justify-self:start}.header-inner{padding:12px 14px}main{padding:0 14px 48px;margin-top:22px}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 </head>
 <body>
+<header><div class="header-inner">
+<div class="brand"><img src="assets/cat-tiri-avatar.png" alt="" aria-hidden="true"><div><strong>Siri-Tiri</strong><span>Cat sound companion</span></div></div>
+<div class="top-status"><span class="dot" id="headerDot"></span><span id="headerStatus">Device demo · Pi connected</span></div>
+<nav aria-label="Main navigation"><button data-page="home" aria-current="page">Home</button><button data-page="events">Events</button><button data-page="settings">Settings</button></nav>
+</div></header>
 <main>
-<header><div><h1>Siri-Tiri interface prototype</h1><p>Identity stays stable; event and device states are explicit.</p></div><nav class="toolbar" aria-label="Prototype views"><button data-view="device" aria-pressed="true">Device</button><button data-view="web" aria-pressed="false">Web history</button></nav></header>
-<section id="deviceView" class="grid">
-<div class="device-wrap"><div class="device" aria-label="Round ESP32 screen preview"><div class="safe"></div><div class="screen">
-<img class="avatar" src="assets/cat-tiri-avatar.png" alt="" aria-hidden="true">
-<div class="name">Tiri</div><div class="status"><span class="dot"></span><span id="deviceState">LISTENING</span></div>
-<div class="sub" id="connection">Microphone on · Pi connected</div><div class="wave" aria-hidden="true">▁ ▃ ▆ ▂ ▅</div>
-<button class="link" id="eventsBtn">Recent events · 3</button>
-</div></div><div class="toolbar"><button id="muteBtn" aria-pressed="false">Mute microphone</button><button id="offlineBtn" aria-pressed="false">Simulate offline</button></div></div>
-<article class="card"><h2>Event review</h2><p>Likely sound class only; context is supplied by the person.</p>
-<div class="row"><img src="assets/cat-tiri-avatar.png" alt="" aria-hidden="true"><div><strong>Meow detected</strong><span class="sub">8:42 PM · 1.8 sec</span></div><span class="pill">Needs review</span></div>
-<div class="choices" id="labels"><button>Food</button><button>Attention</button><button>Play</button><button>Unsure</button></div>
-<p id="saved" class="note" aria-live="polite">Choose a label to save feedback for Tiri.</p><button>More details</button></article>
-</section>
-<section id="webView" class="hidden" aria-label="Web event history preview">
-<article class="card"><h2>Tiri’s recent sounds</h2><p>Today · 3 events · review uncertain ones</p>
-<div class="row"><img src="assets/cat-tiri-avatar.png" alt="" aria-hidden="true"><div><strong>Meow detected</strong><span class="sub">8:42 PM · 1.8 sec · Food</span></div><span class="pill">Reviewed ✓</span></div>
-<div class="row"><img src="assets/cat-tiri-avatar.png" alt="" aria-hidden="true"><div><strong>Possible cat sound</strong><span class="sub">7:16 PM · Context unclear</span></div><span class="pill pending">Needs review</span></div>
-<p class="note">The avatar identifies Tiri. Text badges carry event and review state.</p></article>
-</section>
+<section id="homePage">
+<div class="page-title"><div><h1>Hi, Tiri</h1><p>Your listening device at a glance.</p></div><button class="primary" id="openEvents">Review recent events</button></div>
+<div class="grid">
+<article class="panel"><h2>Device</h2><p class="small muted">Round display preview · 466 × 466</p><div class="device-wrap">
+<div class="device" aria-label="Round display preview"><div class="safe"></div><div class="screen">
+<img class="avatar" src="assets/cat-tiri-avatar.png" alt="" aria-hidden="true"><div class="name">Tiri</div>
+<div class="state" id="deviceState"><span class="dot"></span><span>LISTENING</span></div><div class="meta" id="deviceMeta">Microphone on · Pi connected</div><div class="wave" aria-hidden="true">▁ ▃ ▆ ▂ ▅</div><button class="screen-link" id="screenEvents">Recent events · <span id="eventCount">3</span></button>
+</div></div><div class="controls"><button id="muteToggle" aria-pressed="false">Mute microphone</button><button id="offlineToggle" aria-pressed="false">Simulate offline</button></div></div></article>
+<article class="panel"><h2>Needs your review</h2><p class="small muted">These sound events are waiting for context from you.</p><div id="homePending" class="event-list"></div></article>
+</div></section>
+<section id="eventsPage" class="hidden">
+<div class="page-title"><div><h1>Sound events</h1><p>Review what the detector heard, then add your context.</p></div><button id="addDemo">Add demo event</button></div>
+<div class="panel"><div class="notice">Demo data is stored in this browser only. No microphone audio is captured or uploaded.</div>
+<div class="filters" role="group" aria-label="Filter events"><button data-filter="all" aria-pressed="true">All</button><button data-filter="pending" aria-pressed="false">Needs review</button><button data-filter="reviewed" aria-pressed="false">Reviewed</button></div>
+<div id="eventList" class="event-list"></div></div></section>
+<section id="settingsPage" class="hidden">
+<div class="page-title"><div><h1>Settings</h1><p>Device and Tiri profile.</p></div></div>
+<div class="grid">
+<article class="panel"><h2>Tiri’s profile</h2><div class="formrow"><div><strong>Cat</strong><div class="small muted">Identity shown across device and history</div></div><div style="display:flex;align-items:center;gap:8px"><img src="assets/cat-tiri-avatar.png" alt="" aria-hidden="true" style="width:42px;height:42px;object-fit:contain"><strong>Tiri</strong></div></div><div class="formrow"><div><strong>Avatar pose</strong><div class="small muted">Pose meanings are not assigned</div></div><button disabled title="Pose selection can be added when all licensed assets are included">Default</button></div></article>
+<article class="panel"><h2>Privacy and demo controls</h2><div class="formrow"><div><strong>Audio capture</strong><div class="small muted">Not implemented in this web prototype</div></div><span class="badge">Off</span></div><div class="formrow"><div><strong>Clear demo data</strong><div class="small muted">Remove labels and sample events from this browser</div></div><button class="danger" id="clearData">Clear data</button></div></article>
+</div></section>
 </main>
+<dialog id="reviewDialog"><form method="dialog" class="modal" id="reviewForm">
+<div class="modal-head"><div><h2 id="reviewTitle">Review event</h2><div class="small muted" id="reviewTime"></div></div><button class="close" value="cancel" aria-label="Close review">Close</button></div>
+<div class="modal-cat"><img src="assets/cat-tiri-avatar.png" alt="" aria-hidden="true"><div><strong>Tiri</strong><div class="small muted" id="soundType">Possible cat sound</div></div></div>
+<p>What was happening around this time?</p>
+<div class="labels" id="labelChoices"><button type="button" data-label="Food">Food</button><button type="button" data-label="Attention">Attention</button><button type="button" data-label="Play">Play</button><button type="button" data-label="Door">Door</button><button type="button" data-label="Greeting">Greeting</button><button type="button" data-label="Other">Other</button><button type="button" data-label="Unsure">Unsure</button></div>
+<div class="small muted">Your answer labels the event; it does not train or change the sound detector in this prototype.</div>
+<div class="modal-footer"><button type="button" class="danger" id="deleteEvent">Delete event</button><button type="button" class="primary" id="saveLabel" disabled>Save label</button></div>
+</form></dialog><div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 <script>
-const device=document.querySelector("#deviceView"),web=document.querySelector("#webView");
-document.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",()=>{const isWeb=b.dataset.view==="web";device.classList.toggle("hidden",isWeb);web.classList.toggle("hidden",!isWeb);document.querySelectorAll("[data-view]").forEach(x=>x.setAttribute("aria-pressed",String(x===b)))}));
-const mute=document.querySelector("#muteBtn"),state=document.querySelector("#deviceState"),connection=document.querySelector("#connection");
-mute.addEventListener("click",()=>{const muted=mute.getAttribute("aria-pressed")!=="true";mute.setAttribute("aria-pressed",String(muted));mute.textContent=muted?"Unmute microphone":"Mute microphone";state.textContent=muted?"MUTED":"LISTENING";connection.textContent=muted?"Microphone off · no audio capture":"Microphone on · Pi connected";document.querySelector(".status").style.color=muted?"#aebbc8":"var(--amber)"});
-document.querySelector("#offlineBtn").addEventListener("click",e=>{const off=e.currentTarget.getAttribute("aria-pressed")!=="true";e.currentTarget.setAttribute("aria-pressed",String(off));connection.textContent=off?(mute.getAttribute("aria-pressed")==="true"?"Microphone off · Pi offline":"Microphone on · Pi offline"):(mute.getAttribute("aria-pressed")==="true"?"Microphone off · no audio capture":"Microphone on · Pi connected")});
-document.querySelector("#labels").addEventListener("click",e=>{if(e.target.tagName==="BUTTON")document.querySelector("#saved").textContent="Saved for Tiri · "+e.target.textContent});
-document.querySelector("#eventsBtn").addEventListener("click",()=>{document.querySelector('[data-view="web"]').click()});
+const KEY="siri-tiri-ui-events-v1";
+const seed=[
+{id:"e3",time:"8:42 PM",duration:"1.8 sec",sound:"Meow detected",label:null},
+{id:"e2",time:"7:16 PM",duration:"0.9 sec",sound:"Possible cat sound",label:null},
+{id:"e1",time:"5:03 PM",duration:"2.1 sec",sound:"Meow detected",label:"Food"}
+];
+let events=load(),filter="all",activeId=null,chosenLabel=null,muted=false,offline=false;
+function load(){try{const v=JSON.parse(localStorage.getItem(KEY));return Array.isArray(v)?v:seed}catch{return seed}}
+function persist(){localStorage.setItem(KEY,JSON.stringify(events))}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function card(e){return '<article class="event"><img src="assets/cat-tiri-avatar.png" alt="" aria-hidden="true"><div><strong>'+escapeHtml(e.sound)+'</strong><div class="event-meta">'+escapeHtml(e.time)+' · '+escapeHtml(e.duration)+(e.label?' · '+escapeHtml(e.label):'')+'</div></div><span class="badge '+(e.label?'done':'')+'">'+(e.label?'Reviewed':'Needs review')+'</span><button data-review="'+escapeHtml(e.id)+'">'+(e.label?'Edit label':'Review')+'</button></article>'}
+function render(){const pending=events.filter(e=>!e.label);document.querySelector("#eventCount").textContent=events.length;document.querySelector("#homePending").innerHTML=pending.length?pending.slice(0,2).map(card).join(""):'<div class="empty"><img src="assets/cat-tiri-avatar.png" alt="" aria-hidden="true"><p>All caught up. New sound events will appear here.</p></div>';
+let list=events.filter(e=>filter==="all"||(filter==="pending"&&!e.label)||(filter==="reviewed"&&e.label));document.querySelector("#eventList").innerHTML=list.length?list.map(card).join(""):'<div class="empty">No events in this view.</div>';
+document.querySelectorAll("[data-review]").forEach(b=>b.addEventListener("click",()=>openReview(b.dataset.review)));
+document.querySelector("#headerStatus").textContent="Device demo · "+(offline?"Pi offline":"Pi connected");document.querySelector("#headerDot").classList.toggle("off",offline);
+document.querySelector("#deviceState").className="state"+(muted?" muted":"")+(offline?" offline":"");document.querySelector("#deviceState").innerHTML='<span class="dot"></span><span>'+(muted?"MUTED":offline?"OFFLINE":"LISTENING")+'</span>';document.querySelector("#deviceMeta").textContent=muted?"Microphone off · no audio capture":offline?"Microphone on · Pi offline":"Microphone on · Pi connected";
+document.querySelector("#muteToggle").textContent=muted?"Unmute microphone":"Mute microphone";document.querySelector("#muteToggle").setAttribute("aria-pressed",String(muted));document.querySelector("#offlineToggle").textContent=offline?"Restore Pi connection":"Simulate offline";document.querySelector("#offlineToggle").setAttribute("aria-pressed",String(offline))}
+function navigate(page){document.querySelectorAll("[data-page]").forEach(b=>b.setAttribute("aria-current",b.dataset.page===page?"page":"false"));["home","events","settings"].forEach(p=>document.querySelector("#"+p+"Page").classList.toggle("hidden",p!==page));if(page==="events")render()}
+function openReview(id){activeId=id;chosenLabel=null;const e=events.find(x=>x.id===id);if(!e)return;document.querySelector("#reviewTitle").textContent=e.sound;document.querySelector("#reviewTime").textContent=e.time+" · "+e.duration;document.querySelector("#soundType").textContent=e.sound;document.querySelectorAll("[data-label]").forEach(b=>b.classList.toggle("selected",b.dataset.label===e.label));chosenLabel=e.label;document.querySelector("#saveLabel").disabled=!chosenLabel;document.querySelector("#reviewDialog").showModal()}
+function toast(msg){const t=document.querySelector("#toast");t.textContent=msg;t.classList.remove("hidden");setTimeout(()=>t.classList.add("hidden"),2200)}
+document.querySelectorAll("[data-page]").forEach(b=>b.addEventListener("click",()=>navigate(b.dataset.page)));
+document.querySelectorAll("[data-filter]").forEach(b=>b.addEventListener("click",()=>{filter=b.dataset.filter;document.querySelectorAll("[data-filter]").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));render()}));
+document.querySelector("#openEvents").addEventListener("click",()=>navigate("events"));document.querySelector("#screenEvents").addEventListener("click",()=>navigate("events"));
+document.querySelector("#muteToggle").addEventListener("click",()=>{muted=!muted;render()});document.querySelector("#offlineToggle").addEventListener("click",()=>{offline=!offline;render()});
+document.querySelector("#labelChoices").addEventListener("click",e=>{const b=e.target.closest("[data-label]");if(!b)return;chosenLabel=b.dataset.label;document.querySelectorAll("[data-label]").forEach(x=>x.classList.toggle("selected",x===b));document.querySelector("#saveLabel").disabled=false});
+document.querySelector("#saveLabel").addEventListener("click",()=>{const e=events.find(x=>x.id===activeId);if(e&&chosenLabel){e.label=chosenLabel;persist();document.querySelector("#reviewDialog").close();render();toast("Saved for Tiri") }});
+document.querySelector("#deleteEvent").addEventListener("click",()=>{events=events.filter(x=>x.id!==activeId);persist();document.querySelector("#reviewDialog").close();render();toast("Event deleted")});
+document.querySelector("#addDemo").addEventListener("click",()=>{events.unshift({id:"e"+Date.now(),time:new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"}),duration:"1.2 sec",sound:"Possible cat sound",label:null});persist();render();toast("Demo event added")});
+document.querySelector("#clearData").addEventListener("click",()=>{if(confirm("Clear all sample events and saved labels from this browser?")){events=[];persist();render();toast("Demo data cleared")}});
+render();
 </script>
 </body></html>
