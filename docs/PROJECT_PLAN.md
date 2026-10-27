@@ -12,6 +12,15 @@ This is a personalized pattern-learning tool, not a literal cat-language transla
 - **Raspberry Pi running Home Assistant**: run the initial audio inference service here, subject to measuring the Pi model and available CPU/RAM.
 - **Sonos speakers**: use for optional playback/replies through Home Assistant. Do not plan to use their built-in microphones as audio inputs: Home Assistant exposes microphone state for supported models, not a general audio stream.
 
+## Enclosure findings
+
+- No standalone retail enclosure for the standard ESP32-S3-Touch-AMOLED-1.75 board was found in the reviewed sources. Waveshare's 1.75C product is a separate board variant with a CNC-machined aluminum enclosure, not a separately sold case confirmed compatible with this board.
+- A potentially suitable **free 3D-printable case** is listed on [MakerWorld](https://makerworld.com/en/models/2477655). Its listing identifies the Waveshare ESP32-S3-Touch-AMOLED-1.75 and describes a speaker opening plus a 40 × 40 × 10 mm battery space. This is a printable model, not a retail case.
+- A [Printables simple case](https://www.printables.com/model/1614880-waveshare_esp32-s3-touch-amoled-175-g-simple-case/related) is listed for the 1.75-G/GPS variant; its listing does not establish a battery compartment.
+- The supplied battery is labeled 1100 mAh, 3.7 V (4.07 Wh). The photos do not provide a reliable scale for its physical dimensions, so fit in the MakerWorld 40 × 40 × 10 mm cavity is unconfirmed.
+- Board reference information is available in the [Waveshare hardware reference](https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75/blob/main/HARDWARE_REFERENCE.md). The reviewed reference has electronic connection data but no dimensioned mechanical drawing sufficient to verify a custom enclosure's fit.
+- **Enclosure next step:** measure the battery (length, width, thickness) and compare it with the printable model before printing. If it does not fit or the case does not provide the needed port/microphone/speaker access, create a parametric Onshape enclosure. Use the official board reference, the attached board/case photos, and physical measurements of the board, screen rim, connectors, battery, and speaker. Do not finalize fit-critical geometry from perspective photos alone.
+
 ## Proposed architecture
 
 1. The ESP32 captures audio locally and detects candidate vocalization windows. It sends short clips or audio frames to a service on the Pi over the home network.
@@ -96,6 +105,7 @@ Keep the audio service loosely coupled to Home Assistant (for example, a small H
 - The Pi's model and HA installation details are unknown. Benchmark resource use before choosing deployment packaging.
 - Playback can contaminate microphone input and cause feedback loops; use cooldowns and test echo cancellation.
 - Audio contains household privacy information. Prefer local processing, visible listening/mute status, short retention, and user-controlled deletion.
+- Enclosure fit is not confirmed until the supplied battery and physical board dimensions are measured; treat public printable models as prototypes until test-fitted.
 
 ## Research references
 
@@ -104,3 +114,6 @@ Keep the audio service loosely coupled to Home Assistant (for example, a small H
 - [TensorFlow Lite real-time Raspberry Pi audio classification example](https://github.com/tensorflow/examples/tree/master/lite/examples/sound_classification/raspberry_pi)
 - [AVES animal-vocalization encoder](https://github.com/earthspecies/aves)
 - [Home Assistant Sonos integration](https://www.home-assistant.io/integrations/sonos)
+- [Waveshare board hardware reference](https://github.com/waveshareteam/ESP32-S3-Touch-AMOLED-1.75/blob/main/HARDWARE_REFERENCE.md)
+- [MakerWorld battery-space case model](https://makerworld.com/en/models/2477655)
+- [Printables case for 1.75-G variant](https://www.printables.com/model/1614880-waveshare_esp32-s3-touch-amoled-175-g-simple-case/related)
