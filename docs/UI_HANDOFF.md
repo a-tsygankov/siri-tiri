@@ -333,3 +333,55 @@ The PNG above is a directly rendered, colorized preview of the A1 silhouette. Th
 - [feedme2 cat asset folder](https://github.com/a-tsygankov/feedme2/tree/main/assets/cats)
 - [WCAG 2.2: Use of Color](https://www.w3.org/TR/WCAG22/#use-of-color)
 - [WCAG technique: convey color information in text](https://www.w3.org/WAI/WCAG22/Techniques/general/G14)
+
+
+## Research-informed use of the cat silhouettes
+
+The silhouette set is most useful as a **persistent visual identity for Tiri**, with a secondary role in making event history feel personal and easy to scan. It should not carry the meaning of a detected sound or claim to show Tiri’s current mood.
+
+### Recommended patterns
+
+| UI surface | Recommended use | Interaction and content |
+|---|---|---|
+| ESP32 home | Keep one medium silhouette and “Tiri” as a calm identity anchor. The existing round-screen mockup demonstrates this. | Keep Listening/Muted, microphone, and Pi connection in separate labeled status text and icon. The cat remains visually stable as state changes. |
+| Event review | Use a small silhouette beside “Meow detected” or “Possible cat sound” to identify whose event is being reviewed. | Keep the event type, time, context choices, and **More details** as the primary information/actions. The avatar is not a label and does not suggest Food, Attention, or Play. |
+| Web event history | Repeat the same small silhouette beside Tiri’s name and event rows. This supports quick scanning and gives the device and web history a shared identity. | Use explicit **Reviewed** / **Needs review** text badges; a check or clock icon and color may reinforce, but never replace, the words. |
+| Profile and settings | Offer optional manual pose/color personalization in a profile screen, after the default experience works. | Label this as appearance or avatar choice. Keep a stable selection across screens and sessions; do not rotate poses automatically to express inferred states. |
+| Empty and saved states | Use the silhouette sparingly to make “No events yet” or “Saved for Tiri” feel warm and specific. | Pair it with plain text and a next action when needed. Do not animate the cat to imply that it heard or understood something. |
+
+### Color, pose, and state
+
+- Keep Tiri’s silhouette tint stable by default. Prefer a separate microphone, connection, playback, or review badge next to the image when an operational state needs a quick visual cue.
+- If status colors are used, pair them with a distinct icon and readable label. W3C guidance says color must not be the only way information is conveyed. This applies to the web UI and is a useful design rule for the device too.
+- Avoid putting a badge over the cat’s face or body; use a small adjacent badge so the silhouette remains recognizable at compact sizes.
+- Do not assign meanings such as “happy,” “hungry,” “anxious,” “wants attention,” or “meow understood” to A1–C4. The source asset README identifies these only as pose filenames, not a validated behavior vocabulary.
+- Treat any pose that looks expressive as decoration/identity. Research on feline behavior assessment cautions that similar behaviors can arise from different emotional motivations; using a static silhouette to assert a specific feeling would add even more uncertainty.
+
+### Tap, labels, and accessibility
+
+- If tapping the avatar opens Tiri’s profile, make the whole hit area a real, visible control and label its action (for example, **Tiri’s profile**). Do not rely on users guessing that the picture is interactive.
+- On the web, if the image is the profile link, its accessible name should describe the destination/action. If the adjacent “Tiri” text already supplies the same identity and the image adds no information, use a decorative/empty alternative so the name is not announced twice.
+- Keep visible words beside icon-only states, especially **Listening**, **Muted**, **Offline**, **Saved**, and **Needs review**. W3C image guidance distinguishes informative, functional, and decorative images; choose the alternative based on what the image does in that specific UI.
+
+### Validation before expanding the pose system
+
+The current ui-cat-avatar-system.svg already shows the most valuable cross-surface pattern: one consistent Tiri avatar on the device and in event history, with event/state meanings carried by text and separate badges. Keep that as the design baseline.
+
+Before using all twelve poses or adding state colors, show a few variants to household users at actual display sizes. Ask what each silhouette means, whether it looks like a mood or event label, and whether users can still find Listening/Muted and Needs review without relying on color. Check both the 466 px round screen and small event-row sizes. This is a lightweight way to catch accidental meanings and low-visibility details; it is not evidence that the system can infer cat emotion.
+
+### Research basis and limits
+
+- Nielsen Norman Group’s icon research recommends a text label to resolve ambiguity and describes testing icon interpretations in context. Applied here: keep “Tiri” and event/status wording beside the silhouette, and test poses before assigning semantics.
+- W3C WAI explains that functional images need alternatives describing their function, informative images need an equivalent conveying their content, and decorative images should not add redundant announcements. It also says color should not be the only visual cue.
+- A veterinary behavior review describes why behavior and body language can be difficult to map to a single feline emotion. That supports the conservative product choice to use these static assets for identity, not emotional interpretation. It does not directly study this particular silhouette set.
+- The Feedme2 asset README names twelve poses A1–C4 and documents its alpha-mask/web and recolorable LVGL outputs; it does not define pose meanings.
+
+Sources:
+
+- [NN/g: Icon Usability](https://www.nngroup.com/articles/icon-usability/)
+- [NN/g: Icon Usability Testing](https://www.nngroup.com/articles/how-to-test-digital-icons/)
+- [W3C WAI: Images Tutorial](https://www.w3.org/WAI/tutorials/images/)
+- [W3C WAI: Functional Images](https://www.w3.org/WAI/tutorials/images/functional/)
+- [W3C WCAG: Use of Color](https://www.w3.org/WAI/WCAG22/Understanding/use-of-color)
+- [Recognising and assessing feline emotions during the consultation](https://pmc.ncbi.nlm.nih.gov/articles/PMC11395287/)
+- [Feedme2 cat silhouette README](https://github.com/a-tsygankov/feedme2/blob/main/assets/cats/README.md)
