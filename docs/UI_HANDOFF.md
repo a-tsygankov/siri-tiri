@@ -284,3 +284,48 @@ Moving text can help when the exact content matters and is too long to fit, but 
 - [Android Wear: media controls](https://developer.android.com/design/ui/wear/guides/patterns/media/controls) provides a useful precedent: long media titles can scroll while secondary artist text truncates, with minimum tap targets preserved.
 - [LVGL 9 label overflow](https://lvgl.io/docs/open/9.4/details/widgets/label.html) documents the available label scrolling modes.
 - [W3C WCAG 2.2.2: Pause, Stop, Hide](https://www.w3.org/WAI/WCAG22/Understanding/pause-stop-hide) explains the pause/stop/hide guideline for persistent moving content. Its formal applicability depends on the interface and context; here it is used as a general accessibility design reference.
+
+
+## Cat silhouette system
+
+The [feedme2 cat asset set](https://github.com/a-tsygankov/feedme2/tree/main/assets/cats) contains 12 transparent silhouette masters (A1–C4). Its existing renderer produces 256 px alpha-mask PNGs for the web and 130/88 px white-on-transparent PNGs for LVGL recoloring. That gives Siri-Tiri a shared, crisp cat identity across the ESP32 and web UI without adding a new illustration style.
+
+![Tiri silhouette used across ESP32 and web event history](assets/ui-cat-avatar-system.svg)
+
+### Visual roles
+
+| Surface | Use the silhouette for | Keep separate from the silhouette |
+|---|---|---|
+| ESP32 Listening home | A single medium Tiri avatar as the friendly anchor; show Tiri’s name below/near it. The mic state, network state, and event count remain compact labels around it. | Listening/muted state should use its own mic icon, text, and status accent. Do not make the cat itself look “happy,” “hungry,” or “worried” based on model output. |
+| ESP32 event alert/review | A small avatar next to “Meow detected” or “Possible cat sound,” reinforcing that this is Tiri’s household log. Keep context buttons as the main tap targets. | The avatar must not compete with Food/Attention/Play/Unsure or imply that the pose is the event classification. |
+| ESP32 saved/offline/playback states | Keep the same avatar; add a small check, disconnected link, or speaker badge and short state text where useful. | Avoid making pose changes the only indication of a state. |
+| Web dashboard and event history | Use the same avatar in the Tiri profile/header and as a small marker in sound-event rows, filter chips, and empty states. This connects the device and web log visually. | Use explicit status chips (“Reviewed”, “Needs review”, “Clip retained”) and accessible text; color alone should not distinguish records. |
+| Future multiple-cat support | Give each cat a stable avatar pose and personal accent, then use names as the primary identity. | Do not use arbitrary pose/color changes to encode sound meaning; identity should remain stable across sessions. |
+
+### State color and pose rules
+
+- Treat the silhouette as **Tiri’s identity illustration**. Choose one default pose and keep it stable; let Andrey choose another pose later as a profile personalization option.
+- Use the same Tiri accent on the device and web app. The initial mockup uses a warm peach silhouette on dark AMOLED; the pose remains fixed.
+- Show operational state with a redundant badge: **Listening** + microphone icon + amber accent; **Muted** + crossed-mic icon + slate accent; **Saved** + check + teal; **Offline** + connection icon + text. The silhouette may dim slightly when muted, but its color must not be the only status cue.
+- Processing can use a subtle ring or short waveform animation around the avatar, but stop when muted and avoid an endless “listening pulse” that could imply capture is active when it is not.
+- Do not map the 12 pose filenames to emotions or needs. The asset README names them A1–C4 but provides no state/intent semantics, and pose meaning is subjective.
+
+### Implementation reuse
+
+- Inspect the [asset README](https://github.com/a-tsygankov/feedme2/blob/main/assets/cats/README.md) and [renderer](https://github.com/a-tsygankov/feedme2/blob/main/assets/cats/render.py). It already crops alpha, adds transparent padding, and creates web/firmware outputs.
+- For the Siri-Tiri repo, pin the source revision and either copy the selected source PNG(s) plus a small deterministic renderer or create a documented shared asset package. Avoid fetching silhouettes at runtime from GitHub; embedded/device UI and web history should work offline.
+- On the ESP32, use a small 88 px avatar on event/status rows and a 130 px avatar only on the home/identity screen. The feedme2 renderer’s 130/88 sizes show a tested pattern; verify memory/render cost with this board’s LVGL version before copying its generated C data.
+- On the web, use the generated alpha PNG as a CSS mask and apply the Tiri accent through CSS. Provide an accessible label such as “Tiri” when the image identifies the cat; hide it from assistive technology when the adjacent text already gives the same name.
+- Before copying or redistributing files across repositories, confirm the source images’ license/attribution terms; no separate license was found in the asset folder.
+
+### Priority
+
+- **P0:** Tiri avatar on Listening home and web event list; stable color; text/icon status badges.
+- **P1:** avatar on event review, saved confirmation, and empty history; test 88 px/130 px firmware variants.
+- **Later:** profile pose selection, additional cat profiles, and optional gentle animation after the core status colors and labels are readable.
+
+### References
+
+- [feedme2 cat asset folder](https://github.com/a-tsygankov/feedme2/tree/main/assets/cats)
+- [WCAG 2.2: Use of Color](https://www.w3.org/TR/WCAG22/#use-of-color)
+- [WCAG technique: convey color information in text](https://www.w3.org/WAI/WCAG22/Techniques/general/G14)
