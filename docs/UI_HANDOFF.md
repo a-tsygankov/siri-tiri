@@ -439,4 +439,4 @@ Treat the companion as the history and configuration surface, with the ESP32 rem
 - Provide empty, loading, sync-error, and offline states. Do not hide event labels or delete controls behind swipe gestures.
 - Default audio storage and inference to the home network/Pi. Make any future cloud upload a specific opt-in with retention controls.
 
-The mobile companion mockups are included in [ui-extended-mockups.svg](assets/ui-extended-mockups.svg) alongside the device set. They illustrate Today, Events, and Review as the first mobile flow. Trends and Settings are specified above as the next screens to mock and implement.
+The mobile companion mockups are included in [ui-extended-mockups.svg](assets/ui-extended-mockups.svg) and [ui-pwa-trends-settings.svg](assets/ui-pwa-trends-settings.svg). Together they cover Today, Events, Review, Trends, and Settings. The trend screen shows counts from reviewed labels only; the settings screen puts mic control and clip retention in a clear privacy section.
