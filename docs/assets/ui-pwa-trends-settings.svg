@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="900" viewBox="0 0 1120 900">
+<rect width="1120" height="900" fill="#08121b"/>
+<text x="56" y="55" fill="#f5f7fb" font-family="system-ui,sans-serif" font-size="30" font-weight="700">Siri-Tiri · Companion PWA</text>
+<text x="56" y="87" fill="#aebbc8" font-family="system-ui,sans-serif" font-size="16">Next screens · useful summaries and practical device controls</text>
+<g font-family="system-ui,sans-serif">
+<text x="310" y="134" fill="#cbd8e0" font-size="15" font-weight="700" text-anchor="middle">TRENDS · REVIEWED DATA ONLY</text>
+<rect x="95" y="155" width="430" height="700" rx="42" fill="#0b1721" stroke="#405461" stroke-width="2"/>
+<rect x="108" y="170" width="404" height="670" rx="31" fill="#101d28"/>
+<text x="133" y="210" fill="#aebbc8" font-size="12">9:41</text><text x="133" y="255" fill="#f5f7fb" font-size="24" font-weight="700">Trends</text>
+<text x="133" y="283" fill="#aebbc8" font-size="14">Tiri · last 7 days</text>
+<rect x="128" y="307" width="364" height="245" rx="20" fill="#172733"/>
+<text x="150" y="343" fill="#f5f7fb" font-size="16" font-weight="600">Reviewed meow events</text><text x="150" y="379" fill="#f3c9a8" font-size="28" font-weight="700">8</text><text x="187" y="378" fill="#aebbc8" font-size="13">of 12 detected sounds</text>
+<line x1="153" y1="510" x2="467" y2="510" stroke="#49606e"/><rect x="180" y="456" width="30" height="54" rx="7" fill="#59cdbc"/><rect x="234" y="429" width="30" height="81" rx="7" fill="#59cdbc"/><rect x="288" y="467" width="30" height="43" rx="7" fill="#59cdbc"/><rect x="342" y="415" width="30" height="95" rx="7" fill="#59cdbc"/><rect x="396" y="444" width="30" height="66" rx="7" fill="#59cdbc"/>
+<text x="195" y="530" fill="#aebbc8" font-size="11" text-anchor="middle">M</text><text x="249" y="530" fill="#aebbc8" font-size="11" text-anchor="middle">T</text><text x="303" y="530" fill="#aebbc8" font-size="11" text-anchor="middle">W</text><text x="357" y="530" fill="#aebbc8" font-size="11" text-anchor="middle">T</text><text x="411" y="530" fill="#aebbc8" font-size="11" text-anchor="middle">F</text>
+<rect x="128" y="571" width="364" height="154" rx="20" fill="#172733"/>
+<text x="150" y="607" fill="#f5f7fb" font-size="16" font-weight="600">Your context labels</text><text x="150" y="646" fill="#aebbc8" font-size="14">Food</text><text x="453" y="646" fill="#f5f7fb" font-size="14" text-anchor="end">4</text><rect x="150" y="658" width="280" height="7" rx="4" fill="#263c49"/><rect x="150" y="658" width="150" height="7" rx="4" fill="#f3c9a8"/>
+<text x="150" y="696" fill="#aebbc8" font-size="14">Attention</text><text x="453" y="696" fill="#f5f7fb" font-size="14" text-anchor="end">2</text>
+<text x="133" y="759" fill="#aebbc8" font-size="12">Counts summarize your labels; they do not infer mood.</text>
+<rect x="124" y="787" width="372" height="40" rx="16" fill="#172733"/>
+<text x="157" y="812" fill="#aebbc8" font-size="12">Today</text><text x="236" y="812" fill="#aebbc8" font-size="12">Events</text><text x="326" y="812" fill="#9fe8de" font-size="12" font-weight="700">Trends</text><text x="420" y="812" fill="#aebbc8" font-size="12">Settings</text>
+
+<text x="810" y="134" fill="#cbd8e0" font-size="15" font-weight="700" text-anchor="middle">SETTINGS · PRIVACY &amp; DEVICE</text>
+<rect x="595" y="155" width="430" height="700" rx="42" fill="#0b1721" stroke="#405461" stroke-width="2"/>
+<rect x="608" y="170" width="404" height="670" rx="31" fill="#101d28"/>
+<text x="633" y="210" fill="#aebbc8" font-size="12">9:41</text><text x="633" y="255" fill="#f5f7fb" font-size="24" font-weight="700">Settings</text>
+<text x="633" y="291" fill="#9fe8de" font-size="13" font-weight="700">DEVICE</text>
+<rect x="628" y="306" width="364" height="158" rx="18" fill="#172733"/>
+<text x="651" y="342" fill="#f5f7fb" font-size="16" font-weight="600">Listening device</text><text x="651" y="372" fill="#aebbc8" font-size="14">Tiri’s room · Pi connected</text><text x="651" y="414" fill="#f5f7fb" font-size="14">Microphone</text><rect x="909" y="391" width="58" height="32" rx="16" fill="#123c3a"/><circle cx="948" cy="407" r="12" fill="#9fe8de"/>
+<text x="633" y="500" fill="#9fe8de" font-size="13" font-weight="700">AUDIO &amp; PRIVACY</text>
+<rect x="628" y="515" width="364" height="185" rx="18" fill="#172733"/>
+<text x="651" y="552" fill="#f5f7fb" font-size="15" font-weight="600">Keep event clips</text><text x="651" y="577" fill="#aebbc8" font-size="12">Off · store labels only</text><rect x="909" y="535" width="58" height="32" rx="16" fill="#263945"/><circle cx="928" cy="551" r="12" fill="#d7e0e5"/>
+<line x1="650" y1="600" x2="970" y2="600" stroke="#314654"/><text x="651" y="635" fill="#f5f7fb" font-size="15" font-weight="600">Delete saved clips</text><text x="651" y="663" fill="#aebbc8" font-size="12">Review or remove retained audio</text>
+<rect x="628" y="719" width="364" height="56" rx="16" fill="#172733"/><text x="651" y="753" fill="#f5f7fb" font-size="15">Notifications &amp; quiet hours</text>
+<rect x="624" y="787" width="372" height="40" rx="16" fill="#172733"/>
+<text x="657" y="812" fill="#aebbc8" font-size="12">Today</text><text x="736" y="812" fill="#aebbc8" font-size="12">Events</text><text x="826" y="812" fill="#aebbc8" font-size="12">Trends</text><text x="920" y="812" fill="#9fe8de" font-size="12" font-weight="700">Settings</text>
+</g></svg>
