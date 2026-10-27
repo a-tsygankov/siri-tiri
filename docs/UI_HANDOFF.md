@@ -385,3 +385,58 @@ Sources:
 - [W3C WCAG: Use of Color](https://www.w3.org/WAI/WCAG22/Understanding/use-of-color)
 - [Recognising and assessing feline emotions during the consultation](https://pmc.ncbi.nlm.nih.gov/articles/PMC11395287/)
 - [Feedme2 cat silhouette README](https://github.com/a-tsygankov/feedme2/blob/main/assets/cats/README.md)
+
+
+## Round-device design audit and extended mockups
+
+### What works in the current round-screen direction
+
+- The listening screen has one clear job: show whether the microphone is listening and offer a path to recent events.
+- The review screen puts the quick task first: choose a context or mark **Unsure**, then save in one tap.
+- **More details** keeps playback and optional context off the first screen.
+- The circle has a documented inner safe area, and labels are paired with color rather than relying on color alone.
+- The same Tiri silhouette anchors the device and event list without claiming to interpret her mood.
+
+### Issues to address in the next device implementation
+
+| Priority | Finding | Design change |
+|---|---|---|
+| High | The SVG mockups use small metadata and helper text (roughly 12–14 px). Those lines can be hard to read at real viewing distance. | Keep 16 px as the usual device body-text target where space allows. Demote secondary metadata, and verify the physical panel at arm’s length. |
+| High | The quick-label screen has no obvious dismiss/skip action when the user cannot answer. | Add a visible **Later** or **Close** action. Keep **Unsure** as a valid answer, not a forced classification. |
+| Medium | Fixed “Today” timestamps and event counts are fine for concepts but do not cover stale/offline data. | Distinguish event time from last sync; show “Saved on device” or “Pi offline” when applicable. |
+| Medium | A short tap immediately commits the label, which is efficient but could misfire on a round panel. | Preserve immediate save, show a brief **Undo** confirmation, and allow later editing from history. |
+| Medium | The current wireframes do not show selected, saving, error, or muted states side by side. | Include the states below in the firmware handoff and validate with touch calibration and the enclosure fitted. |
+
+### Device screen set
+
+The extended board in [ui-extended-mockups.svg](assets/ui-extended-mockups.svg) adds three related round-screen states:
+
+1. **Listening:** Tiri identity, explicit mic/Pi status, recent events.
+2. **Quick review:** event fact, four large context choices, optional details.
+3. **Optional details:** replay, calibrated detector wording, and outcome feedback.
+
+Recommended additional implementation states: Muted, Pi offline, Saving, Saved with Undo, and no recent events. Keep all critical text and touch targets within the inner safe circle. Target at least 48 px hit areas on the 466 px panel; size, spacing, and edge reach still need validation on the actual board.
+
+### Companion web app: mobile-first PWA
+
+Treat the companion as the history and configuration surface, with the ESP32 remaining the at-a-glance room device. A responsive PWA can serve iPhone and Android from one web app. It should install cleanly, work at phone widths, and preserve core review/history access when the Pi is temporarily unavailable.
+
+**Primary navigation:** **Today · Events · Trends · Settings** in a bottom tab bar. Keep the global device/microphone state visible on Today and Settings. Avoid a sign-in requirement for a single-household local setup; add account/cloud setup only if remote sync becomes a real need.
+
+**Screens and jobs:**
+
+- **Today:** “Tiri at home,” mic and Pi status, latest event needing review, and a single **Review event** action. Do not treat “no new event” as a cat status.
+- **Events:** newest-first list with filters for Needs review / Reviewed, date, sound label, user context, and clip-retention state. Search can wait until the history is large.
+- **Event review:** replay only on explicit action; show “Meow detected” or “Possible cat sound,” event time/duration, quick context labels, **Unsure**, optional note/outcome, and save/undo. Keep model evidence in an expandable detail area.
+- **Trends:** show counts and examples from reviewed events, with sample size and date range. Avoid causal or emotional claims; an early dataset should say “Not enough reviewed events yet.”
+- **Settings:** device connection, listening/mute, clip retention and deletion, notification rules/quiet hours, approved reply recordings, and PWA install/help.
+
+**Responsive and interaction rules:**
+
+- At phone width, use the bottom tabs and keep primary actions in thumb reach. At tablet/desktop widths, expand the event list and detail pane side by side.
+- Use platform safe areas, dynamic text, visible keyboard focus, and minimum 44 pt iOS / 48 dp Android touch targets.
+- Keep labels readable and pair icons with words for high-impact states: Listening, Muted, Offline, Needs review, and Saved.
+- Provide empty, loading, sync-error, and offline states. Do not hide event labels or delete controls behind swipe gestures.
+- Default audio storage and inference to the home network/Pi. Make any future cloud upload a specific opt-in with retention controls.
+
+The mobile companion mockups are included in [ui-extended-mockups.svg](assets/ui-extended-mockups.svg) alongside the device set. They illustrate Today, Events, and Review as the first mobile flow. Trends and Settings are specified above as the next screens to mock and implement.
