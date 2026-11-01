@@ -1,6 +1,6 @@
 # Phone PWA: short-clip capture and owner review (local-only slice)
 
-Status: approved by the user on 2026-11-01; implemented on branch claude/pwa-capture-review (PR number recorded by the controller).
+Status: approved by the user on 2026-11-01; implemented on PR #12 (branch claude/pwa-capture-review).
 
 ## Intent and why now
 
