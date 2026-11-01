@@ -84,7 +84,38 @@ The initial downloads matched the record's published MD5 values, respectively `b
 
 Layout: `CatMeows/archives/*.zip`, `CatMeows/raw/dataset/*.wav` and supplementary original folders beneath `raw/`; `provenance.json` records source/version/terms/hashes. ZIP extraction rejects absolute/traversal paths, links, case-insensitive duplicate filenames and excessive expansion. New extraction is staged before installation. Repeated runs compare expected raw files and fail if local changes differ, leaving them intact; move a modified `raw` directory aside explicitly before requesting fresh extraction. Keep annotations and derived/resampled files separate from originals.
 
-All **483 downloaded WAVs are mono PCM16 at 8000 Hz**. Do not submit these originals directly to the current 16000-Hz worker: they will be rejected as unsupported audio. Resampling with a documented preprocessing version and dataset evaluation are next tasks. The extras include other cat vocalizations and uncut sequences; do not treat all extras as ground-truth non-meow/background negatives. No dataset or source audio is committed.
+All **483 downloaded WAVs are mono PCM16 at 8000 Hz**. Do not submit these originals directly to the current 16000-Hz worker: they will be rejected as unsupported audio. Use the offline preparation commands below. The extras include other cat vocalizations and uncut sequences; do not treat all extras as ground-truth non-meow/background negatives. No dataset or source audio is committed.
+
+### CatMeows preparation and batch scoring
+
+```powershell
+.\scripts\setup.ps1
+.\scripts\prepare-catmeows.ps1
+.\scripts\evaluate-catmeows.ps1
+# Python equivalents, without changing PowerShell execution policy:
+py -3 local-service/manage.py prepare-catmeows
+py -3 local-service/manage.py evaluate-catmeows
+# Explicit debug subset (report is labeled subset=true):
+py -3 local-service/manage.py evaluate-catmeows --limit 10
+```
+
+Preparation/evaluation are offline after explicit dataset/model setup. Commands default to the invoking scripts' checkout-local `CatMeows/`; `--dataset-root 'C:\Workspaces\siri-tiri\CatMeows'` selects another local copy. Evaluation also accepts `--manifest` and `--reports` paths. They never start the API, enqueue jobs, or open the service database.
+
+Preparation first verifies both archive hashes and all expected extracted originals, then selects only the 440 primary archive members. It creates `CatMeows/derived/catmeows-pcm16-8k-to16k-polyphase2-kaiser5-v1/manifest.json` and `audio/*.wav`. Originals and extras are not rewritten. New output is staged atomically; repeated preparation compares expected artifacts and refuses to overwrite changed files. Move a modified version directory aside explicitly before rebuilding it.
+
+The pinned resampler is SciPy 1.15.3 `resample_poly` with up=2, down=1, Kaiser beta=5, zero constant padding, float64 calculation, then round-to-nearest-even PCM16 quantization and saturation. NumPy stays pinned at 2.2.6. Each output has exactly twice the source samples and the same duration; saturation counts are recorded. Upsampling does not restore frequencies missing above the original 4-kHz Nyquist limit. Numerical dependency versions are checked, and setup/smoke validates resampling. Change the preparation version when altering these choices.
+
+The manifest records source/derived SHA-256, sample counts/rates, preparation/dependency versions, clipping count, and parsed cat/owner/recording-session/condition metadata. Brushing, waiting for food and unfamiliar isolation remain `datasetContext`, never owner observations or predicted intent. Five source filenames identify session 4 despite the published 1–3 range; these values are retained with metadata notes.
+
+Split assignments use the first eight hex digits of SHA-256(catId), modulo 5: bucket 0 is evaluation, the others calibration. This assigns 20% of hash buckets, **not an exact clip/cat quota**. This inventory yields 277 clips/14 cats in calibration and 163 clips/7 cats in evaluation; every cat's sessions stay together. No model fitting or threshold selection occurs, and owners/environments can overlap across groups.
+
+Reports use a fresh `CatMeows/reports/run-<UTC>-<id>/` directory with `report.json` and `clips.csv`. Both contain clip identifiers, source and inference preprocessing provenance, checksums and model versions; JSON also includes the manifest snapshot hash, recording-condition/split summaries, failures, class scores, runtime versions and latency statistics. Derived path/checksum/length failures are explicit. The command exits nonzero after writing a report if any selected clip failed.
+
+Diagnostic thresholds 0.1/0.3/0.5 apply only to **maximum window Meow score**, with detection rate calculated over successfully scored positive clips. Failure/selection coverage is reported separately. Precision and false-positive rate are null, and `selectedThreshold` stays null. Extras are excluded from labeled evaluation. These are not household performance or Tiri confidence estimates.
+
+Latency uses monotonic timers, separates model loading, file/hash reading and inference, and uses nearest-rank p50/p95. The first actual predictor invocation is reported separately even when earlier files are invalid, and excluded from `afterFirst`. The measurements are one sequential CPU pass with two interpreter threads, not a repeated hardware benchmark. Native memory use is not measured. See [CATMEOWS_BASELINE.md](CATMEOWS_BASELINE.md) for the initial run.
+
+The live worker remains unchanged: to process an explicitly selected derived clip through the queue, set its audio root to the version directory and use the manifest's relative `audioRef`. Batch evaluation alone does not create review labels, populate history, select thresholds or publish any audio/report.
 
 On Windows PowerShell:
 
