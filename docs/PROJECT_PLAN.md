@@ -64,6 +64,8 @@ Keep inference behind a versioned local HTTP API, separate from the Cloudflare A
 
 ### 3. Train a personal pattern model
 
+**Implementation plan:** [YAMNet embedding personal-model implementation plan](YAMNET_EMBEDDING_IMPLEMENTATION_PLAN.md). This is a deferred follow-on: begin only after durable capture/review/import and retention gates are met. It specifies the Windows-first training environment, Pi inference path, Tiri data targets, embedding/classifier baselines, and promotion criteria.
+
 - Use YAMNet embeddings as input features for a small classifier; keep YAMNet frozen initially.
 - Use CatMeows v1.0.2 as the provisional pre-Tiri baseline: run the frozen YAMNet Meow-score detector on its 440 positive clips, report coverage and latency by cat-exclusive split, and use its three elicitation contexts for a separate exploratory context-classifier baseline. The first batch report is [CATMEOWS_BASELINE.md](../local-service/CATMEOWS_BASELINE.md).
 - The current TFLite artifact returns 521 class scores, not the 1,024-dimensional embeddings; document the feature source for any context head. Do not imply CatMeows-only evaluation measures false positives or Tiri accuracy.
