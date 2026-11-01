@@ -253,7 +253,8 @@ try {
   flog('FAILED 1 (module missing)');
   throw e;
 }
-const { formatDuration, eventBadge, undoFields, runExport } = app;
+const { formatDuration, eventBadge, undoFields, runExport, appendReview, startExport, onRouteChange, isLocked } = app;
+const { buildTombstone } = await import('../records.js');
 const { buildCapture, buildReview } = records;
 
 await fcheck('formatDuration', async () => {
@@ -318,6 +319,76 @@ await fcheck('successful share marks exportedAt', async () => {
   fassert(files[1].type === 'audio/wav' && files[1].name === env.eventId + '.wav', 'wav name');
   const ev = await fdb.getEvent(env.eventId);
   fassert(typeof ev.exportedAt === 'string', 'exportedAt ' + ev.exportedAt);
+});
+
+await fcheck('concurrent saves/undo cannot fork the revision chain', async () => {
+  const id = env.eventId;
+  const r1 = await appendReview(fdb, { eventId: id, previous: null, fields: { context: 'food' } });
+  fassert(r1 && r1.revision === 1, 'rev1');
+  const [a, b] = await Promise.all([
+    appendReview(fdb, { eventId: id, previous: r1, fields: { context: 'play' } }),
+    appendReview(fdb, { eventId: id, previous: r1, fields: { context: 'door' } }),
+  ]);
+  fassert((a === null) !== (b === null), 'exactly one save ran: ' + !!a + ',' + !!b);
+  const saved = a || b;
+  // Save-then-Undo while the save is in flight: the undo is ignored.
+  const [s3, u3] = await Promise.all([
+    appendReview(fdb, { eventId: id, previous: saved, fields: { context: 'greeting' } }),
+    appendReview(fdb, { eventId: id, previous: saved, fields: undoFields(r1, saved) }),
+  ]);
+  fassert(s3 && u3 === null, 'undo during save ignored');
+  const revs = (await fdb.listReviews(id)).map((r) => r.revision);
+  fassert(revs.join() === '1,2,3', 'revisions ' + revs.join());
+});
+
+function seedClip() {
+  const e = buildCapture({ installId: meta.installId, clipId: uuid(), sampleRate: 16000, durationMs: 50,
+    sizeBytes: bytes.length, sha256: 'a'.repeat(64), clippedSamples: 0, recordedAt: now(),
+    interrupted: false, uuid, now });
+  return fdb.saveCapture(e, new Blob([bytes], { type: 'audio/wav' })).then(() => e);
+}
+
+await fcheck('route change rejects a pending multi-chunk wait and releases the lock', async () => {
+  const box = document.createElement('div');
+  box.id = 'export-next';
+  document.body.append(box);
+  const seeded = [];
+  for (let i = 0; i < 21; i++) seeded.push(await seedClip());
+  let calls = 0;
+  const restore = stubShare(async () => { calls++; });
+  let outcome;
+  try {
+    const p = startExport(fdb, 'all');
+    for (let i = 0; i < 100 && !document.getElementById('share-next'); i++) await new Promise((r) => setTimeout(r, 20));
+    fassert(document.getElementById('share-next'), 'part 2 prompt not shown');
+    fassert(isLocked(), 'lock not held while waiting');
+    onRouteChange();
+    outcome = await p;
+  } finally { restore(); box.remove(); }
+  fassert(outcome === 'failed', 'outcome ' + outcome);
+  fassert(!isLocked(), 'lock still held');
+  fassert(calls === 1, 'share calls ' + calls);
+  for (const e of seeded) fassert((await fdb.getEvent(e.eventId)).exportedAt === null, 'marked exported');
+});
+
+await fcheck('deleted event exported as records only (tombstone, reviews; no WAV, no manifest)', async () => {
+  const victim = await seedClip();
+  const r1 = await appendReview(fdb, { eventId: victim.eventId, previous: null, fields: { context: 'food' } });
+  const tomb = buildTombstone({ installId: meta.installId, eventId: victim.eventId, clipId: victim.payload.clipId,
+    supersedesMessageId: victim.messageId, uuid, now });
+  await fdb.deleteClip({ tombstone: tomb, reviewTombstone: null });
+  await appendReview(fdb, { eventId: victim.eventId, previous: r1, fields: { context: 'door' } });
+  let files = [];
+  const restore = stubShare(async (data) => { files.push(...data.files); });
+  try { await runExport(fdb, 'all', { beforeChunk: async () => {} }); } finally { restore(); }
+  const bundle = JSON.parse(await files[0].text());
+  const ids = bundle.events.filter((e) => e.eventId === victim.eventId).map((e) => e.messageId);
+  fassert(ids.includes(victim.messageId) && ids.includes(tomb.messageId), 'capture + tombstone');
+  fassert(bundle.reviews.filter((r) => r.eventId === victim.eventId).length === 2, 'reviews');
+  fassert(!bundle.clips.some((c) => c.eventId === victim.eventId), 'manifest entry present');
+  fassert(!files.some((f) => f.name === victim.eventId + '.wav'), 'wav shared');
+  fassert(files.length === 1 + bundle.clips.length, 'file count ' + files.length);
+  fassert(typeof (await fdb.getEvent(victim.eventId)).exportedAt === 'string', 'deleted event not marked exported');
 });
 
 fdb.close();

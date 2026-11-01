@@ -1,11 +1,11 @@
 import { APP_VERSION, PROTOCOL_VERSION } from './version.js';
 import { needsReview, LIMITS } from './records.js';
 
-export function selectEvents(rows, reviewsByEvent, mode, tombstones = []) {
-  const deleted = new Set(tombstones.map((t) => t.eventId));
+// Deleted (tombstoned) events stay candidates; buildBundle exports them as records only.
+// `_tombstones` stays in the signature so callers keep passing it.
+export function selectEvents(rows, reviewsByEvent, mode, _tombstones = []) {
   return rows.filter((row) => {
     const id = row.envelope.eventId;
-    if (deleted.has(id)) return false;
     if (mode === 'new') return !row.exportedAt;
     if (mode === 'unreviewed') return needsReview(reviewsByEvent.get(id) || []);
     return true;
@@ -14,6 +14,7 @@ export function selectEvents(rows, reviewsByEvent, mode, tombstones = []) {
 
 export function buildBundle({ installId, events, tombstones = [], reviewsByEvent, now }) {
   const ids = new Set(events.map((e) => e.envelope.eventId));
+  const deleted = new Set(tombstones.map((t) => t.eventId));
   const envelopes = [
     ...events.map((e) => e.envelope),
     ...tombstones.filter((t) => ids.has(t.eventId)),
@@ -23,7 +24,8 @@ export function buildBundle({ installId, events, tombstones = [], reviewsByEvent
     const list = [...(reviewsByEvent.get(id) || [])].sort((a, b) => a.revision - b.revision);
     reviews.push(...list);
   }
-  const clips = events.map(({ envelope: e }) => ({
+  // Deleted events contribute records only: no manifest entry, no WAV.
+  const clips = events.filter((ev) => !ev.deleted && !deleted.has(ev.envelope.eventId)).map(({ envelope: e }) => ({
     clipId: e.payload.clipId,
     eventId: e.eventId,
     filename: `${e.eventId}.wav`,

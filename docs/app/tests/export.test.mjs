@@ -34,12 +34,31 @@ test('unreviewed uses needsReview', () => {
   assert.deepEqual(out, [a, c]);
 });
 
-test('all includes everything non-deleted; tombstoned never selected', () => {
-  const a = row('x'), b = row(), c = row();
-  const t = buildTombstone({ installId: 'inst', eventId: c.envelope.eventId, clipId: 'k', supersedesMessageId: c.envelope.messageId, uuid, now });
-  const out = selectEvents([a, b, c], new Map(), 'all', [t]);
-  assert.deepEqual(out, [a, b]);
-  assert.equal(selectEvents([a, b, c], new Map(), 'new', [t]).includes(c), false);
+test('tombstoned events stay candidates (records only): all, unreviewed via needsReview, new when not exported', () => {
+  const a = row('x'), b = row(), c = row(), d = row('y');
+  const tC = buildTombstone({ installId: 'inst', eventId: c.envelope.eventId, clipId: 'k', supersedesMessageId: c.envelope.messageId, uuid, now });
+  const tD = buildTombstone({ installId: 'inst', eventId: d.envelope.eventId, clipId: 'k2', supersedesMessageId: d.envelope.messageId, uuid, now });
+  const ts = [tC, tD];
+  assert.deepEqual(selectEvents([a, b, c, d], new Map(), 'all', ts), [a, b, c, d]);
+  assert.deepEqual(selectEvents([a, b, c, d], new Map(), 'new', ts), [b, c]);
+  const rv = new Map([[c.envelope.eventId, [review(c.envelope.eventId)]]]);
+  assert.deepEqual(selectEvents([a, b, c, d], rv, 'unreviewed', ts), [a, b, d]);
+});
+
+test('buildBundle: deleted event exported as records only (capture + tombstone + reviews, no manifest entry)', () => {
+  const a = row(), c = row();
+  const tC = buildTombstone({ installId: 'inst', eventId: c.envelope.eventId, clipId: c.envelope.payload.clipId, supersedesMessageId: c.envelope.messageId, uuid, now });
+  const r1 = review(c.envelope.eventId);
+  const r2 = buildReview({ eventId: c.envelope.eventId, reviewId: r1.reviewId, previous: r1, fields: { deleted: true }, uuid, now });
+  const r3 = buildReview({ eventId: c.envelope.eventId, reviewId: r1.reviewId, previous: r2, fields: { context: 'door' }, uuid, now });
+  const rv = new Map([[c.envelope.eventId, [r1, r2, r3]]]);
+  const bundle = buildBundle({ installId: 'inst', events: [a, { ...c, deleted: true }], tombstones: [tC], reviewsByEvent: rv, now });
+  assert.deepEqual(bundle.events, [a.envelope, c.envelope, tC]);
+  assert.deepEqual(bundle.reviews.map((r) => r.revision), [1, 2, 3]);
+  assert.deepEqual(bundle.clips.map((m) => m.eventId), [a.envelope.eventId]);
+  // Deleted status is also recognised from the tombstone alone (row without a deleted flag).
+  const viaTomb = buildBundle({ installId: 'inst', events: [a, c], tombstones: [tC], reviewsByEvent: rv, now });
+  assert.deepEqual(viaTomb.clips.map((m) => m.eventId), [a.envelope.eventId]);
 });
 
 test('selectEvents does not mutate input', () => {
@@ -52,17 +71,16 @@ test('selectEvents does not mutate input', () => {
 test('buildBundle shape, manifest, reviews, tombstones', () => {
   const a = row(), b = row();
   const other = buildTombstone({ installId: 'inst', eventId: 'zzz', clipId: 'k', supersedesMessageId: 'm', uuid, now });
-  const tA = buildTombstone({ installId: 'inst', eventId: a.envelope.eventId, clipId: 'k', supersedesMessageId: a.envelope.messageId, uuid, now });
   const r1 = review(b.envelope.eventId);
   const r2 = review(b.envelope.eventId, r1);
   const rv = new Map([[b.envelope.eventId, [r2, r1]], ['zzz', [review('zzz')]]]);
-  const bundle = buildBundle({ installId: 'inst', events: [a, b], tombstones: [tA, other], reviewsByEvent: rv, now });
+  const bundle = buildBundle({ installId: 'inst', events: [a, b], tombstones: [other], reviewsByEvent: rv, now });
   assert.equal(bundle.exportVersion, 1);
   assert.equal(bundle.appVersion, APP_VERSION);
   assert.equal(bundle.protocolVersion, PROTOCOL_VERSION);
   assert.equal(bundle.installId, 'inst');
   assert.equal(bundle.exportedAt, now());
-  assert.deepEqual(bundle.events, [a.envelope, b.envelope, tA]);
+  assert.deepEqual(bundle.events, [a.envelope, b.envelope]);
   assert.deepEqual(bundle.reviews.map((r) => r.revision), [1, 2]);
   assert.equal(bundle.clips.length, 2);
   assert.deepEqual(bundle.clips[0], {

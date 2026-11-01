@@ -47,21 +47,42 @@ export function undoFields(previous, saved) {
   return reviewFields(previous, { withDeleted: true });
 }
 
+// One review write (save, undo, delete clip) per event at a time; a second call while one
+// is in flight is ignored (returns null) so double taps cannot fork the revision chain.
+const reviewOps = new Set();
+export async function reviewOp(eventId, fn) {
+  if (reviewOps.has(eventId)) return null;
+  reviewOps.add(eventId);
+  try { return await fn(); } finally { reviewOps.delete(eventId); }
+}
+
+// Appends the next revision after `previous` (null for the first) under the per-event guard.
+export function appendReview(db, { eventId, previous, fields }) {
+  return reviewOp(eventId, async () => {
+    const doc = buildReview({ eventId, reviewId: previous?.reviewId ?? uuid(), previous, fields, uuid, now });
+    await db.saveReview(doc);
+    return doc;
+  });
+}
+
 // Single export entry point: select → bundle → share/download → only then markExported.
+// Deleted events go out as records only (capture, tombstone, reviews; no WAV, no manifest entry).
 export async function runExport(db, mode, { beforeChunk, onCount } = {}) {
   const [rows, reviews, tombstones, meta] = await Promise.all([
-    db.listEvents(), db.allReviews(), db.listTombstones(), db.getMeta(),
+    db.listEvents({ includeDeleted: true }), db.allReviews(), db.listTombstones(), db.getMeta(),
   ]);
+  const deleted = new Set(tombstones.map((t) => t.eventId));
   const included = [];
   const entries = [];
   for (const ev of selectEvents(rows, reviews, mode, tombstones)) {
+    if (ev.deleted || deleted.has(ev.envelope.eventId)) { included.push(ev); continue; }
     const blob = await db.getClip(ev.envelope.payload.clipId);
     if (!blob) continue;
     included.push(ev);
     entries.push({ name: `${ev.envelope.eventId}.wav`, data: blob });
   }
   if (!included.length) throw new Error('nothing_to_export');
-  onCount?.(included.length);
+  onCount?.(entries.length, included.length - entries.length);
   const bundle = buildBundle({ installId: meta.installId, events: included, tombstones, reviewsByEvent: reviews, now });
   entries.unshift({ name: bundleFilename(() => bundle.exportedAt), data: JSON.stringify(bundle, null, 2) });
   const result = await shareFiles(entries, { beforeChunk });
@@ -166,6 +187,7 @@ function leaveReview() {
 }
 
 async function route({ focus = true } = {}) {
+  onRouteChange();
   leaveReview();
   const { name } = parseHash();
   state.route = name;
@@ -332,10 +354,10 @@ async function saveReviewAction() {
     return;
   }
   const previous = r.latest;
-  const doc = buildReview({
-    eventId: r.eventId, reviewId: previous?.reviewId ?? uuid(), previous, fields: reviewFields(r.fields), uuid, now,
-  });
-  try { await state.db.saveReview(doc); } catch { announce('Could not save. Try again.'); return; }
+  let doc;
+  try { doc = await appendReview(state.db, { eventId: r.eventId, previous, fields: reviewFields(r.fields) }); }
+  catch { announce('Could not save. Try again.'); return; }
+  if (!doc || state.review !== r) return; // ignored double tap, or the owner left the screen
   r.latest = doc;
   setReviewStatus([doc]);
   announce('Saved on this phone');
@@ -352,12 +374,13 @@ async function saveReviewAction() {
 async function undoAction() {
   const u = state.undo;
   if (!u) return;
+  let doc;
+  try { doc = await appendReview(state.db, { eventId: u.eventId, previous: u.saved, fields: undoFields(u.previous, u.saved) }); }
+  catch { announce('Could not undo. Try again.'); return; }
+  if (!doc) return;
   clearTimeout(state.undoTimer);
-  const doc = buildReview({
-    eventId: u.eventId, reviewId: u.saved.reviewId, previous: u.saved, fields: undoFields(u.previous, u.saved), uuid, now,
-  });
-  try { await state.db.saveReview(doc); } catch { announce('Could not undo. Try again.'); return; }
   state.undo = null;
+  if (!state.review || state.review.eventId !== u.eventId) return;
   await renderReview(u.eventId);
   announce('Undone. Saved on this phone');
   $('[data-action="save"]')?.focus();
@@ -366,16 +389,23 @@ async function undoAction() {
 async function deleteClipAction() {
   const r = state.review;
   const ok = await confirmDialog('Delete the audio of this clip? Its record and review history stay on this phone.', 'Delete clip');
-  if (!ok) return;
+  if (!ok || state.review !== r) return;
   const env = r.ev.envelope;
-  const tombstone = buildTombstone({
-    installId: state.meta.installId, eventId: r.eventId, clipId: env.payload.clipId,
-    supersedesMessageId: env.messageId, uuid, now,
-  });
-  const reviewTombstone = r.latest && !r.latest.deleted
-    ? buildReview({ eventId: r.eventId, reviewId: r.latest.reviewId, previous: r.latest, fields: { deleted: true }, uuid, now })
-    : null;
-  try { await state.db.deleteClip({ tombstone, reviewTombstone }); } catch { announce('Could not delete. Try again.'); return; }
+  let done;
+  try {
+    done = await reviewOp(r.eventId, async () => {
+      const tombstone = buildTombstone({
+        installId: state.meta.installId, eventId: r.eventId, clipId: env.payload.clipId,
+        supersedesMessageId: env.messageId, uuid, now,
+      });
+      const reviewTombstone = r.latest && !r.latest.deleted
+        ? buildReview({ eventId: r.eventId, reviewId: r.latest.reviewId, previous: r.latest, fields: { deleted: true }, uuid, now })
+        : null;
+      await state.db.deleteClip({ tombstone, reviewTombstone });
+      return true;
+    });
+  } catch { announce('Could not delete. Try again.'); return; }
+  if (!done || state.review !== r) return;
   leaveReview();
   await renderReview(r.eventId);
   announce('Audio deleted');
@@ -420,7 +450,7 @@ async function renderSettings() {
     ${st === 'blocked' ? '<p class="banner warn">Storage full. Export or delete clips to record.</p>' : ''}
     </section>
     <section class="card"><h2>Export</h2>
-      <p class="hint">Opens the share sheet, or downloads the files. Nothing is uploaded.</p>
+      <p class="hint">Opens the share sheet, or downloads the files. Nothing is uploaded. Deleted clips are exported as records only.</p>
       <div class="stack">
         <button class="primary" data-action="export" data-mode="new">Export new</button>
         <button data-action="export" data-mode="unreviewed">Export unreviewed</button>
@@ -441,29 +471,47 @@ async function renderSettings() {
   input.addEventListener('input', () => { $('[data-action="delete-all"]', el).disabled = input.value !== 'DELETE'; });
 }
 
-function waitForTap(i, total) {
+let pendingTap = null;
+
+// Rejects a pending "Share part N of M" wait; called on every route change.
+export function onRouteChange() {
+  if (pendingTap) pendingTap(new Error('cancelled'));
+}
+
+export const isLocked = () => !!state.locked;
+
+export function waitForTap(i, total) {
   const box = $('#export-next');
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, rej) => {
+    const reject = (e) => { pendingTap = null; if (box) box.innerHTML = ''; rej(e); };
+    if (!box) { reject(new Error('cancelled')); return; }
+    pendingTap = reject;
     box.innerHTML = `<div class="banner"><p>Ready to share part ${i + 1} of ${total}.</p>
       <button class="primary" id="share-next">${total > 1 ? `Share part ${i + 1} of ${total}` : 'Share export'}</button>
       <button id="share-cancel">Cancel</button></div>`;
     $('#share-next').focus();
-    $('#share-next').addEventListener('click', () => { box.innerHTML = ''; resolve(); }, { once: true });
-    $('#share-cancel').addEventListener('click', () => { box.innerHTML = ''; reject(new Error('cancelled')); }, { once: true });
+    $('#share-next').addEventListener('click', () => { pendingTap = null; box.innerHTML = ''; resolve(); }, { once: true });
+    $('#share-cancel').addEventListener('click', () => reject(new Error('cancelled')), { once: true });
   });
 }
 
-async function exportAction(btn) {
-  const buttons = document.querySelectorAll('[data-action="export"]');
-  buttons.forEach((b) => { b.disabled = true; });
-  let count = 0;
-  try {
-    const res = await runExport(state.db, btn.dataset.mode, { beforeChunk: waitForTap, onCount: (n) => { count = n; } });
-    announce(`${res === 'shared' ? 'Shared' : 'Downloaded'} ${count} ${count === 1 ? 'clip' : 'clips'}. Marked as exported.`);
-  } catch (e) {
-    announce(e.message === 'nothing_to_export' ? 'Nothing to export.' : 'Export did not finish. Nothing was marked as exported.');
-  }
-  if (state.route === 'settings') await render();
+// The UI export path, under the action lock. Resolves 'shared' | 'downloaded' | 'failed' | 'busy'.
+export async function startExport(db, mode) {
+  let outcome = 'busy';
+  await exclusive(async () => {
+    document.querySelectorAll('[data-action="export"]').forEach((b) => { b.disabled = true; });
+    let clips = 0;
+    let records = 0;
+    try {
+      outcome = await runExport(db, mode, { beforeChunk: waitForTap, onCount: (c, r) => { clips = c; records = r; } });
+      const extra = records ? `, ${records} deleted as records only` : '';
+      announce(`${outcome === 'shared' ? 'Shared' : 'Downloaded'} ${clips} ${clips === 1 ? 'clip' : 'clips'}${extra}. Marked as exported.`);
+    } catch (e) {
+      outcome = 'failed';
+      announce(e.message === 'nothing_to_export' ? 'Nothing to export.' : 'Export did not finish. Nothing was marked as exported.');
+    }
+  });
+  return outcome;
 }
 
 async function deleteExportedAction() {
@@ -643,7 +691,7 @@ const ACTIONS = {
     announce(res === 'granted' ? 'This browser will keep your data.' : 'The browser did not grant persistent storage.');
     await render();
   },
-  export: (b) => exclusive(() => exportAction(b)),
+  export: async (b) => { await startExport(state.db, b.dataset.mode); if (state.route === 'settings') await render(); },
   'delete-exported': () => exclusive(deleteExportedAction),
   'delete-all': () => exclusive(deleteAllAction),
   'apply-update': () => { if (!busy() && state.update) state.update(); },
