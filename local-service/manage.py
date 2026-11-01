@@ -142,13 +142,18 @@ def run_stack(port, database, audio_root):
 
 def model_smoke():
     from inference import Yamnet
+    from dataset_prepare import resample_pcm16
+    import array
+    resampled, clipped = resample_pcm16(array.array('h', [0] * 8))
+    if list(resampled) != [0] * 16 or clipped:
+        raise RuntimeError('resampling_smoke_failed')
     model = Yamnet()
     results = [model.analyze([0.] * 16000),
                model.analyze([0.1 * math.sin(2 * math.pi * 440 * i / 16000) for i in range(16000)])]
     if results[0]['topClasses'][0]['label'] != 'Silence':
         raise RuntimeError('model_silence_smoke_failed')
     print(json.dumps(dict(status='ok', modelVersion=model_assets.MANIFEST['modelVersion'],
-                          sha256=model_assets.MANIFEST['sha256'], syntheticChecks=['silence', '440Hz-tone'])), flush=True)
+                          sha256=model_assets.MANIFEST['sha256'], syntheticChecks=['silence', '440Hz-tone', '8k-to16k-resampling'])), flush=True)
 
 
 def main(argv=None):
@@ -169,6 +174,13 @@ def main(argv=None):
             p.add_argument('--once', action='store_true')
     analyze = sub.add_parser('analyze')
     analyze.add_argument('wav', type=Path)
+    for name in ('prepare-catmeows', 'evaluate-catmeows'):
+        dataset = sub.add_parser(name)
+        dataset.add_argument('--dataset-root', type=Path, default=REPO / 'CatMeows')
+        if name == 'evaluate-catmeows':
+            dataset.add_argument('--manifest', type=Path)
+            dataset.add_argument('--reports', type=Path)
+            dataset.add_argument('--limit', type=int, help='Explicitly labeled subset for debugging')
     args = parser.parse_args(argv)
     if hasattr(args, 'port') and not 1 <= args.port <= 65535:
         parser.error('port must be 1..65535')
@@ -187,15 +199,26 @@ def main(argv=None):
         return 0
     if args.command == 'run':
         return run_stack(args.port, args.db, args.audio_root)
-    if args.command in ('smoke', 'analyze'):
+    if args.command in ('smoke', 'analyze', 'prepare-catmeows', 'evaluate-catmeows'):
         require_environment()
         if Path(sys.executable).resolve() != PYTHON.resolve():
             return subprocess.call([str(PYTHON), '-B', str(ROOT / 'manage.py')] + (sys.argv[1:] if argv is None else argv), env=environment())
         if args.command == 'smoke':
             model_smoke()
-        else:
+        elif args.command == 'analyze':
             from inference import Yamnet, load_wav
             print(json.dumps(Yamnet().analyze(load_wav(args.wav))))
+        elif args.command == 'prepare-catmeows':
+            from dataset_prepare import prepare_catmeows
+            print('Prepared manifest: ' + str(prepare_catmeows(args.dataset_root)))
+        else:
+            from dataset_prepare import VERSION
+            from dataset_evaluate import evaluate
+            manifest = args.manifest or args.dataset_root / 'derived' / VERSION / 'manifest.json'
+            path = evaluate(manifest, args.reports or args.dataset_root / 'reports', limit=args.limit)
+            print('Batch report: ' + str(path), flush=True)
+            if json.loads(path.read_text(encoding='utf-8'))['failedCount']:
+                return 1
         return 0
     if args.command == 'tests':
         python = PYTHON if PYTHON.is_file() else Path(sys.executable)

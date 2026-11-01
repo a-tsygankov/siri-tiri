@@ -60,4 +60,12 @@ Files go to ignored, checkout-relative **`CatMeows/`**: verified source ZIPs in 
 
 The authors permit **scientific research and non-commercial use**, require acknowledgment, and request citation of their work; see the source record for full terms and references. The supplementary files are not an automatically labeled household-background test set.
 
-The downloaded originals are **8-kHz mono PCM16**. The worker currently accepts 16 kHz only, so use a separately versioned resampling/preprocessing step before inference. Originals remain unchanged; this download task does not evaluate accuracy or choose thresholds. See the [local setup notes](local-service/README.md#catmeows-download) for links and limits.
+The downloaded originals are **8-kHz mono PCM16**. The live worker accepts 16 kHz only. Offline preparation now writes versioned derivatives without modifying originals:
+
+```powershell
+.\scripts\setup.ps1                 # update the pinned SciPy resampler dependency
+.\scripts\prepare-catmeows.ps1      # verified originals -> versioned 16-kHz WAVs and manifest
+.\scripts\evaluate-catmeows.ps1     # per-clip JSON/CSV scores and latency; no API/database access
+```
+
+Derived files remain ignored under `CatMeows/derived/`; uniquely named reports go under `CatMeows/reports/`. A full local run scored 440/440 primary clips with no failures and preserved all 483 source WAV checksums. See the [baseline measurements and limits](local-service/CATMEOWS_BASELINE.md) and [batch command details](local-service/README.md#catmeows-preparation-and-batch-scoring). No operating threshold or household false-positive estimate is established by this positive-only dataset.

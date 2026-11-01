@@ -206,7 +206,8 @@ See [Offline Sync, Updates and Observability Architecture](ARCHITECTURE_SYNC_UPD
 - [x] Optional Windows CPU YAMNet worker consuming the durable queue, pinned/verified TFLite model and runtime, versioned PCM16/16-kHz preprocessing, setup/run/test/status scripts, synthetic inference and isolated capture-to-result validation.
 - [ ] Tiri/background recorded-clip validation, thresholds and latency/memory benchmarks; broader audio formats/resampling and Raspberry Pi inference lock.
 - [x] CatMeows v1.0.2 local research provisioning: ignored root folder, pinned archive downloads, safe extraction, setup flags and source/terms/citation handoff; 440 primary plus 43 supplementary WAVs inventoried at 8 kHz. No Tiri recordings yet.
-- [ ] Versioned 8-kHz-to-16-kHz preprocessing and CatMeows batch evaluation; preserve originals and avoid treating context labels or extras as validated intent/household negatives.
+- [x] Versioned 8-kHz-to-16-kHz preprocessing and CatMeows JSON/CSV batch scoring: all 440 primary clips scored, all 483 original WAV hashes preserved, deterministic cat/session grouping and single-pass latency measured. No threshold selected or negative-class/Tiri accuracy claimed.
+- [ ] Reviewed negative/uncertain recordings and manifest, frozen detector rule/threshold calibration, independent evaluation, and Tiri-specific validation when recordings become available.
 - [ ] Authenticated LAN and Cloudflare sync, audio R2, device/PWA outboxes.
 - [ ] Update managers, signed OTA and hosted diagnostics.
 
