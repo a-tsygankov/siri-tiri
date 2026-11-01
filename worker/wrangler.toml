@@ -1,0 +1,30 @@
+name = "siri-tiri-worker"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+# The database_id below is a PLACEHOLDER. Local development (`wrangler dev`,
+# `vitest`) runs against a local D1/R2 and never needs real ids. Before the
+# first deploy the owner creates the resources and replaces the ids:
+#   wrangler d1 create siri-tiri-db
+#   wrangler r2 bucket create siri-tiri-clips
+#   wrangler secret put ADMIN_SECRET
+[[d1_databases]]
+binding = "DB"
+database_name = "siri-tiri-db"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "CLIPS"
+bucket_name = "siri-tiri-clips"
+
+[vars]
+# `wrangler deploy` ships these. Local dev overrides via .dev.vars (ignored;
+# copy .dev.vars.example). Tests pin their own values in vitest.config.ts.
+ENVIRONMENT = "production"
+ALLOWED_ORIGINS = "https://a-tsygankov.github.io"
+# Secrets (never here): ADMIN_SECRET
+
+[observability]
+enabled = true

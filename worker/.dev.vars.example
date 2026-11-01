@@ -1,0 +1,4 @@
+# Copy to .dev.vars (ignored by Git) for `wrangler dev`. Never commit real values.
+ADMIN_SECRET=change-me
+ALLOWED_ORIGINS=http://localhost:8080,http://127.0.0.1:8080
+ENVIRONMENT=development

@@ -6,3 +6,8 @@ local-service/audio/
 local-service/run/
 __pycache__/
 *.py[cod]
+worker/node_modules/
+worker/.wrangler/
+worker/.dev.vars
+worker/dist/
+.superpowers/
