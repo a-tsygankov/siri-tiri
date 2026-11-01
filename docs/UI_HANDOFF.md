@@ -472,3 +472,15 @@ An iPhone review of the interactive mockups exposed two problems: a flex-based c
 **Phone**: one Review page with expandable Context, Location, Observed behavior and Outcome sections. Keep Save review available and let users skip all optional sections. The v5 prototype shares simulated state with the round UI and is not connected to the Pi, microphone, or persistent storage.
 
 **Validation**: test one-tap quick save, skip, Unsure, editing a saved review, Undo, offline queue, small-circle touch targets, scroll overflow, reduced motion, and VoiceOver labels. Do not equate the demo's local saved flag with successful synchronization.
+
+
+## Offline synchronization, version management and diagnostics (approved baseline)
+
+**Authoritative specification:** [Architecture: Sync, Updates and Logging](ARCHITECTURE_SYNC_UPDATES_LOGGING.md). The v5 mockups remain interaction demos; their Save state is not durable or cloud-synchronized.
+
+- **PWA Review:** save every edit to IndexedDB before showing local success; distinguish `Saved on this phone`, `Queued for sync`, `Synced`, and `Analysis complete`. Show pending count, retry and conflict resolution. Sync on app launch/resume and network recovery; iOS background execution is not guaranteed.
+- **Round device:** keep captured events, audio references, labels and log batches in separate persistent queues; show small connectivity/queue/update status without obstructing Review. Preserve all data through OTA. Show an actionable offline warning only when useful, not as a blocking modal.
+- **Diagnostics UI:** phone Settings → Diagnostics with device/local/cloud health, version and update status, pending queue counts, recent errors and correlation IDs. Cloudflare-hosted authenticated dashboard provides full searchable logs; local service provides an offline-capable log viewer. Round screen exposes status and critical warnings only.
+- **Updates UI:** PWA update available/reload prompt after persisting drafts; device OTA progress, safe deferral, confirmation and rollback; local service updater status. Distinguish update *available*, *downloading*, *installing*, *verifying*, *succeeded* and *rolled back*.
+- **Accessibility:** readable sync states not encoded only by color, screen-reader announcements for failed sync, no forced reload during unsaved edits, and large safe-circle touch targets.
+- **Required new mockup states:** offline with queued reviews; reconnecting/sync progress; update available; OTA progress/failure; diagnostics error detail; version incompatibility; local inference unavailable. These are documented requirements, not yet implemented in interactive mockups.
