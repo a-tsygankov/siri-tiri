@@ -253,7 +253,7 @@ try {
   flog('FAILED 1 (module missing)');
   throw e;
 }
-const { formatDuration, eventBadge, undoFields, runExport, appendReview, startExport, onRouteChange, isLocked } = app;
+const { formatDuration, eventBadge, undoFields, runExport, appendReview, startExport, onRouteChange, isLocked, render } = app;
 const { buildTombstone } = await import('../records.js');
 const { buildCapture, buildReview } = records;
 
@@ -368,6 +368,28 @@ await fcheck('route change rejects a pending multi-chunk wait and releases the l
   fassert(outcome === 'failed', 'outcome ' + outcome);
   fassert(!isLocked(), 'lock still held');
   fassert(calls === 1, 'share calls ' + calls);
+  for (const e of seeded) fassert((await fdb.getEvent(e.eventId)).exportedAt === null, 'marked exported');
+});
+
+await fcheck('a Settings re-render rejects a pending multi-chunk wait and releases the lock', async () => {
+  const box = document.createElement('div');
+  box.id = 'export-next';
+  const sec = document.createElement('section');
+  sec.id = 'screen-today';
+  document.body.append(box, sec);
+  const seeded = [];
+  for (let i = 0; i < 21; i++) seeded.push(await seedClip());
+  const restore = stubShare(async () => {});
+  let outcome;
+  try {
+    const p = startExport(fdb, 'all');
+    for (let i = 0; i < 100 && !document.getElementById('share-next'); i++) await new Promise((r) => setTimeout(r, 20));
+    fassert(document.getElementById('share-next'), 'part 2 prompt not shown');
+    await render();
+    outcome = await p;
+  } finally { restore(); box.remove(); sec.remove(); }
+  fassert(outcome === 'failed', 'outcome ' + outcome);
+  fassert(!isLocked(), 'lock still held');
   for (const e of seeded) fassert((await fdb.getEvent(e.eventId)).exportedAt === null, 'marked exported');
 });
 

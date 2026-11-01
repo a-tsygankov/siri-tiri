@@ -199,8 +199,10 @@ async function route({ focus = true } = {}) {
   if (focus) screen(name).querySelector('h1')?.focus();
 }
 
-async function render() {
+export async function render() {
   const { name, id } = parseHash();
+  // A re-render replaces the section content, including any "Share part N" prompt.
+  onRouteChange();
   try { await SCREENS[name](id); } catch (e) {
     console.error(e);
     screen(name).innerHTML = '<h1 tabindex="-1">Something went wrong</h1><p>Could not read data on this phone. Reload the app to try again.</p>';
@@ -736,4 +738,30 @@ export async function init() {
   }
   persistState(!state.meta.persistGranted).catch(() => {});
   await route({ focus: false });
+  registerWorker();
+}
+
+// After the first render, so a registration failure never blocks the app.
+function registerWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  let reloading = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloading || !state.applying) return;
+    reloading = true;
+    location.reload();
+  });
+  const offer = (worker) => notifyUpdateReady(() => {
+    state.applying = true;
+    worker.postMessage({ type: 'SKIP_WAITING' });
+  });
+  navigator.serviceWorker.register('./sw.js?v=' + encodeURIComponent(APP_VERSION), { scope: './' }).then((reg) => {
+    if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing;
+      if (!w) return;
+      w.addEventListener('statechange', () => {
+        if (w.state === 'installed' && navigator.serviceWorker.controller) offer(w);
+      });
+    });
+  }).catch((e) => console.error('service worker registration failed', e));
 }

@@ -1,0 +1,14 @@
+{
+  "id": "./",
+  "name": "Siri-Tiri Recorder",
+  "short_name": "Siri-Tiri",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fbfaf7",
+  "theme_color": "#225c50",
+  "icons": [
+    { "src": "../assets/cat-tiri-avatar.png", "sizes": "256x256", "type": "image/png" }
+  ]
+}
