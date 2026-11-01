@@ -33,7 +33,7 @@ def environment():
     return env
 
 
-def setup():
+def setup(with_catmeows=False):
     if sys.platform != 'win32' or sys.version_info[:2] != (3, 13) or platform.machine().lower() not in ('amd64', 'x86_64'):
         raise RuntimeError('inference_setup_requires_windows_x64_python313; core API supports Python 3.11+')
     env = environment()
@@ -53,6 +53,11 @@ def setup():
     model_assets.download()
     (ROOT / 'audio').mkdir(exist_ok=True)
     subprocess.run([str(PYTHON), '-B', str(ROOT / 'manage.py'), 'smoke'], env=env, check=True)
+    if with_catmeows:
+        import catmeows
+        catmeows.provision()
+    else:
+        print('Optional CatMeows research data: https://zenodo.org/records/4008297; run manage.py catmeows', flush=True)
     print('Setup verified. Run: py -3 "%s" run' % (ROOT / 'manage.py'), flush=True)
 
 
@@ -149,8 +154,10 @@ def model_smoke():
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
-    for name in ('setup', 'tests', 'smoke', 'paths'):
+    for name in ('tests', 'smoke', 'paths', 'catmeows'):
         sub.add_parser(name)
+    setup_parser = sub.add_parser('setup')
+    setup_parser.add_argument('--catmeows', action='store_true', help='Also download CatMeows for non-commercial research: https://zenodo.org/records/4008297')
     for name in ('run', 'api', 'worker', 'status'):
         p = sub.add_parser(name)
         p.add_argument('--port', type=int, default=8765)
@@ -169,7 +176,11 @@ def main(argv=None):
         print(json.dumps(dict(root=str(ROOT), python=str(PYTHON), model=str(model_assets.MODEL_PATH))))
         return 0
     if args.command == 'setup':
-        setup()
+        setup(args.catmeows)
+        return 0
+    if args.command == 'catmeows':
+        import catmeows
+        catmeows.provision()
         return 0
     if args.command == 'status':
         print(json.dumps(health(args.port)))

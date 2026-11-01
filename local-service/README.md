@@ -59,6 +59,33 @@ The worker loads and verifies the model before claiming jobs, renews 60-second l
 
 Model provenance, checksum and alternative checkpoint findings are in [MODEL_RESEARCH.md](MODEL_RESEARCH.md). The model is downloaded only during explicit setup; ordinary inference works offline. Setup needs internet for any missing packages/model; it is not an offline installer bundle. Unit tests do not download models or require ML dependencies. Real-model smoke uses synthetic silence and a tone, not evidence of accuracy on Tiri.
 
+### CatMeows download
+
+The authors provide [CatMeows v1.0.2](https://zenodo.org/records/4008297), DOI [10.5281/zenodo.4008297](https://doi.org/10.5281/zenodo.4008297), for scientific research and non-commercial purposes with acknowledgment/citation. Start here while Tiri recordings are unavailable; narrow experimental context labels do not establish intent or transfer accuracy to Tiri.
+
+Acknowledgment: Luca Andrea Ludovico, Stavros Ntalampiras, Giorgio Presti, Simona Cannas, Monica Battini and Silvana Mattiello. Dataset reference: *CatMeows: A Publicly-Available Dataset of Cat Vocalizations*, MMM 2021, LNCS 12573, pp. 230–243. The Zenodo record also supplies the related 2019 study and full citation details.
+
+```powershell
+.\scripts\download-catmeows.ps1
+.\scripts\setup.ps1 -CatMeows
+# Or, without PowerShell wrappers:
+py -3 local-service/manage.py catmeows
+py -3.13 local-service/manage.py setup --catmeows
+```
+
+Dataset-only download uses the standard library and does not require the inference venv. Default model/runtime setup stays unchanged; the dataset is opt-in and never downloaded by ordinary unit tests/CI. Invocation from any CWD resolves `CatMeows/` at the scripts' checkout root.
+
+| Archive | Authors' download | Bytes | Pinned SHA-256 |
+| --- | --- | --- | --- |
+| Main 440 clips | [dataset.zip](https://zenodo.org/records/4008297/files/dataset.zip?download=1) | 8861099 | `214000280e6ef33b10e39ef063ccc1f2f83d789ab57f2a5d111da63b06f659ae` |
+| Supplementary 43 WAVs | [extras.zip](https://zenodo.org/records/4008297/files/extras.zip?download=1) | 4142654 | `81d1206a632f5d5052bcd9f804be10a02a6f7a2b8ab9a35858d105483159b4f2` |
+
+The initial downloads matched the record's published MD5 values, respectively `b5fa911bcd6514e39dfef6876f747df4` and `7663bb5e1de2c808beeb202a52dc99ab`. SHA-256 values were calculated locally from those verified bytes and are now pinned in `catmeows.py`; they are not publisher signatures.
+
+Layout: `CatMeows/archives/*.zip`, `CatMeows/raw/dataset/*.wav` and supplementary original folders beneath `raw/`; `provenance.json` records source/version/terms/hashes. ZIP extraction rejects absolute/traversal paths, links, case-insensitive duplicate filenames and excessive expansion. New extraction is staged before installation. Repeated runs compare expected raw files and fail if local changes differ, leaving them intact; move a modified `raw` directory aside explicitly before requesting fresh extraction. Keep annotations and derived/resampled files separate from originals.
+
+All **483 downloaded WAVs are mono PCM16 at 8000 Hz**. Do not submit these originals directly to the current 16000-Hz worker: they will be rejected as unsupported audio. Resampling with a documented preprocessing version and dataset evaluation are next tasks. The extras include other cat vocalizations and uncut sequences; do not treat all extras as ground-truth non-meow/background negatives. No dataset or source audio is committed.
+
 On Windows PowerShell:
 
 ```powershell
