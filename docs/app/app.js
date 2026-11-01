@@ -1,9 +1,11 @@
 import { APP_VERSION, PROTOCOL_VERSION } from './version.js';
 import {
   CONTEXTS, LOCATIONS, BEHAVIORS, OUTCOMES, LIMITS,
-  buildCapture, buildTombstone, buildReview, latestReview, needsReview, storageState,
+  buildCapture, buildTombstone, buildReview, buildTrim, buildRestore, isTrimmed,
+  latestReview, needsReview, storageState,
 } from './records.js';
-import { selectEvents, buildBundle, bundleFilename, shareFiles, isRecordsOnly } from './export.js';
+import { selectEvents, buildBundle, bundleFilename, shareFiles, isRecordsOnly, clipFilesFor } from './export.js';
+import { trimWav, sha256Hex } from './wav.js';
 import openDb from './db.js';
 import { Recorder } from './recorder.js';
 
@@ -81,10 +83,14 @@ export async function runExport(db, mode, { beforeChunk, onCount, confirmDownloa
   const entries = [];
   for (const ev of selectEvents(rows, reviews, mode, tombstones)) {
     if (isRecordsOnly(ev, deleted, mode)) { included.push({ ...ev, recordsOnly: true }); continue; }
-    const blob = await db.getClip(ev.envelope.payload.clipId);
-    if (!blob) continue;
-    included.push(ev);
-    entries.push({ name: `${ev.envelope.eventId}.wav`, data: blob });
+    // A trimmed event may contribute two files (original and trimmed WAV); see clipFilesFor.
+    const clipFiles = [];
+    for (const cf of clipFilesFor(ev, mode)) {
+      const blob = await db.getClip(cf.envelope.payload.clipId);
+      if (blob) { clipFiles.push(cf); entries.push({ name: cf.filename, data: blob }); }
+    }
+    if (!clipFiles.length) continue;
+    included.push({ ...ev, clipFiles });
   }
   if (!included.length) throw new Error('nothing_to_export');
   onCount?.(entries.length, included.length - entries.length);
@@ -149,7 +155,7 @@ function eventRow(row, reviews, label) {
     <div class="event-main">
       <strong>${esc(when)}</strong>
       <small>${formatDuration(p.durationMs)} · Recorded by you</small>
-      <span class="badges"><span class="badge ${nr ? 'todo' : 'done'}">${esc(eventBadge(row, reviews))}</span>${row.deleted ? '<span class="badge gone">Audio deleted</span>' : ''}</span>
+      <span class="badges"><span class="badge ${nr ? 'todo' : 'done'}">${esc(eventBadge(row, reviews))}</span>${isTrimmed(e) ? '<span class="badge gone">Trimmed</span>' : ''}${row.deleted ? '<span class="badge gone">Audio deleted</span>' : ''}</span>
     </div>
     <button class="primary" data-action="go" data-to="#review/${esc(e.eventId)}" aria-label="${action} recording from ${esc(when)}">${action}</button>
   </article>`;
@@ -190,6 +196,8 @@ function parseHash() {
 }
 
 function leaveReview() {
+  const t = state.review?.trim;
+  if (t) { try { t.audio?.pause(); } catch {} cancelAnimationFrame(t.raf); URL.revokeObjectURL(t.url); }
   if (state.objectUrl) { URL.revokeObjectURL(state.objectUrl); state.objectUrl = null; }
   clearTimeout(state.undoTimer);
   state.undo = null;
@@ -295,18 +303,24 @@ async function renderReview(eventId) {
   ]);
   const latest = latestReview(reviews);
   const fields = draft ? reviewFields(draft) : (latest && !latest.deleted ? reviewFields(latest) : {});
-  state.review = { eventId, ev, latest, fields, hasAudio: !!blob };
+  state.review = { eventId, ev, latest, fields, hasAudio: !!blob, trim: null };
   if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
   state.objectUrl = blob ? URL.createObjectURL(blob) : null;
   const p = ev.envelope.payload;
+  const trimmed = isTrimmed(ev.envelope);
   const undoVisible = state.undo && state.undo.eventId === eventId;
   el.innerHTML = `
     <button class="back" data-action="go" data-to="#events">← Events</button>
     <h1 tabindex="-1">Recorded by you</h1>
-    <p class="meta">${esc(fmtDate(p.recordedAt))} · ${formatDuration(p.durationMs)}</p>
+    <p class="meta">${esc(fmtDate(p.recordedAt))} · ${formatDuration(p.durationMs)}${trimmed ? ` · Trimmed from ${formatDuration(p.trim.sourceDurationMs)}` : ''}</p>
     ${p.interrupted ? '<p class="flag">Recording was cut short</p>' : ''}
     ${blob ? `<audio controls preload="none" src="${state.objectUrl}" aria-label="Play recording"></audio>`
       : '<p class="flag">Audio deleted</p>'}
+    ${blob && !ev.deleted ? `<div class="row trim-actions">
+        <button data-action="trim-open" aria-expanded="false" aria-controls="trim-editor">${trimmed ? 'Change trim' : 'Trim clip'}</button>
+        ${trimmed ? '<button data-action="trim-restore">Restore original</button>' : ''}
+      </div>
+      <section class="section trim" id="trim-editor" hidden aria-labelledby="trim-title"></section>` : ''}
     <p><span class="badge ${needsReview(reviews) ? 'todo' : 'done'}" id="review-status">${esc(eventBadge(ev, reviews))}</span></p>
     ${SECTIONS.map((s) => `
       <fieldset class="section">
@@ -337,6 +351,189 @@ async function renderReview(eventId) {
     count();
     saveDraft();
   });
+}
+
+// ---------------------------------------------------------------------------
+// Trim editor (start/end cut on the ORIGINAL recording; a save appends a new capture message)
+// ---------------------------------------------------------------------------
+
+const TRIM_STEP_MS = 50;
+const fmtSec = (ms) => `${(ms / 1000).toFixed(2)} s`;
+
+// Opens the editor under the Play control, loaded with the original WAV and the current cut.
+async function openTrim() {
+  const r = state.review;
+  if (!r || r.trim) { $('#trim-start')?.focus(); return; }
+  const original = r.ev.original;
+  const blob = await state.db.getClip(original.payload.clipId);
+  if (!blob || state.review !== r) { announce('The original recording is not on this phone.'); return; }
+  const total = original.payload.durationMs;
+  const cur = r.ev.envelope.payload.trim;
+  const t = {
+    blob, total, start: cur ? cur.startMs : 0, end: cur ? cur.endMs : total,
+    url: URL.createObjectURL(blob), audio: null, raf: 0, playing: false,
+  };
+  r.trim = t;
+  const box = $('#trim-editor');
+  box.hidden = false;
+  box.innerHTML = `
+    <h2 id="trim-title">Trim</h2>
+    <p class="hint">Cut silence or noise from the start and the end. The original recording stays on this phone and in exports.</p>
+    <label for="trim-start">Start <output id="trim-start-out" for="trim-start">${fmtSec(t.start)}</output></label>
+    <input type="range" id="trim-start" min="0" max="${total}" step="${TRIM_STEP_MS}" value="${t.start}" aria-valuetext="${fmtSec(t.start)}">
+    <label for="trim-end">End <output id="trim-end-out" for="trim-end">${fmtSec(t.end)}</output></label>
+    <input type="range" id="trim-end" min="0" max="${total}" step="${TRIM_STEP_MS}" value="${t.end}" aria-valuetext="${fmtSec(t.end)}">
+    <p class="meta" id="trim-length"></p>
+    <audio id="trim-audio" src="${t.url}" preload="auto" hidden></audio>
+    <div class="row">
+      <button data-action="trim-play" aria-pressed="false">Play selection</button>
+      <button class="primary" data-action="trim-save">Save trim</button>
+      <button data-action="trim-cancel">Cancel</button>
+    </div>`;
+  t.audio = $('#trim-audio', box);
+  t.audio.addEventListener('pause', () => setTrimPlaying(false));
+  t.audio.addEventListener('ended', () => setTrimPlaying(false));
+  $('#trim-start', box).addEventListener('input', (e) => setTrimPoint('start', Number(e.target.value)));
+  $('#trim-end', box).addEventListener('input', (e) => setTrimPoint('end', Number(e.target.value)));
+  $('[data-action="trim-open"]')?.setAttribute('aria-expanded', 'true');
+  updateTrimReadout();
+  $('#trim-start', box).focus();
+}
+
+// Keeps start < end with at least LIMITS.minMs between them; the other handle gives way.
+function setTrimPoint(which, ms) {
+  const t = state.review?.trim;
+  if (!t) return;
+  const min = LIMITS.minMs;
+  if (which === 'start') {
+    t.start = Math.max(0, Math.min(ms, t.total - min));
+    if (t.end - t.start < min) t.end = Math.min(t.total, t.start + min);
+  } else {
+    t.end = Math.min(t.total, Math.max(ms, min));
+    if (t.end - t.start < min) t.start = Math.max(0, t.end - min);
+  }
+  stopTrimPlayback();
+  updateTrimReadout();
+}
+
+function updateTrimReadout() {
+  const t = state.review?.trim;
+  if (!t) return;
+  const s = $('#trim-start'); const e = $('#trim-end');
+  if (s) { s.value = t.start; s.setAttribute('aria-valuetext', fmtSec(t.start)); $('#trim-start-out').textContent = fmtSec(t.start); }
+  if (e) { e.value = t.end; e.setAttribute('aria-valuetext', fmtSec(t.end)); $('#trim-end-out').textContent = fmtSec(t.end); }
+  const whole = t.start === 0 && t.end === t.total;
+  const len = $('#trim-length');
+  if (len) len.textContent = whole ? `Whole clip (${fmtSec(t.total)}). Move a handle to cut.` : `Keeps ${fmtSec(t.end - t.start)} of ${fmtSec(t.total)}`;
+  const save = $('[data-action="trim-save"]');
+  if (save) save.disabled = whole;
+}
+
+function setTrimPlaying(on) {
+  const t = state.review?.trim;
+  if (!t) return;
+  t.playing = on;
+  const b = $('[data-action="trim-play"]');
+  if (b) { b.textContent = on ? 'Stop' : 'Play selection'; b.setAttribute('aria-pressed', String(on)); }
+  if (!on) cancelAnimationFrame(t.raf);
+}
+
+function stopTrimPlayback() {
+  const t = state.review?.trim;
+  if (t?.audio && !t.audio.paused) t.audio.pause();
+}
+
+// Plays [start, end) of the original; a frame loop stops at the end point (timeupdate is too coarse).
+async function toggleTrimPlay() {
+  const t = state.review?.trim;
+  if (!t?.audio) return;
+  if (t.playing) { stopTrimPlayback(); return; }
+  const a = t.audio;
+  a.currentTime = t.start / 1000;
+  try { await a.play(); } catch { announce('Could not play. Tap again.'); return; }
+  setTrimPlaying(true);
+  const endSec = t.end / 1000;
+  const tick = () => {
+    if (!t.playing) return;
+    if (a.currentTime >= endSec) { a.pause(); return; }
+    t.raf = requestAnimationFrame(tick);
+  };
+  t.raf = requestAnimationFrame(tick);
+}
+
+function closeTrim() {
+  const r = state.review;
+  const t = r?.trim;
+  if (!t) return;
+  stopTrimPlayback();
+  cancelAnimationFrame(t.raf);
+  URL.revokeObjectURL(t.url);
+  r.trim = null;
+  const box = $('#trim-editor');
+  if (box) { box.hidden = true; box.innerHTML = ''; }
+  const open = $('[data-action="trim-open"]');
+  if (open) { open.setAttribute('aria-expanded', 'false'); open.focus(); }
+}
+
+// Cuts the original WAV, hashes it and appends a trim message superseding the current clip.
+// The review (fields, draft, revisions) is untouched: trimming is about the audio only.
+async function saveTrimAction() {
+  const r = state.review;
+  const t = r?.trim;
+  if (!t) return;
+  if (t.start === 0 && t.end === t.total) { announce('Move a handle to cut something first.'); return; }
+  stopTrimPlayback();
+  $('[data-action="trim-save"]').disabled = true;
+  let done = false;
+  try {
+    done = await reviewOp(r.eventId, async () => {
+      const cut = trimWav(new Uint8Array(await t.blob.arrayBuffer()), t.start, t.end);
+      const current = r.ev.envelope;
+      const envelope = buildTrim({
+        installId: state.meta.installId, original: r.ev.original, supersedesMessageId: current.messageId,
+        clipId: uuid(), sha256: await sha256Hex(cut.bytes), sizeBytes: cut.bytes.length,
+        durationMs: cut.durationMs, clippedSamples: cut.clippedSamples, startMs: t.start, endMs: t.end, uuid, now,
+      });
+      const removeClipIds = isTrimmed(current) ? [current.payload.clipId] : [];
+      await state.db.saveTrim(envelope, new Blob([cut.bytes], { type: 'audio/wav' }), { removeClipIds });
+      return true;
+    });
+  } catch (e) {
+    console.error(e);
+    announce('Could not save the trim. Try again.');
+    const b = $('[data-action="trim-save"]');
+    if (b) b.disabled = false;
+    return;
+  }
+  if (!done || state.review !== r) return;
+  closeTrim();
+  leaveReview();
+  await renderReview(r.eventId);
+  announce('Trimmed. Saved on this phone');
+  $('[data-action="trim-open"]')?.focus();
+}
+
+// Appends a restore message so the untrimmed original is the current clip again.
+async function restoreTrimAction() {
+  const r = state.review;
+  if (!r || !isTrimmed(r.ev.envelope)) return;
+  const ok = await confirmDialog('Put back the original, untrimmed recording? The trimmed copy is removed from this phone; its record stays.', 'Restore original', { danger: false });
+  if (!ok || state.review !== r) return;
+  let done = false;
+  try {
+    done = await reviewOp(r.eventId, async () => {
+      const current = r.ev.envelope;
+      const envelope = buildRestore({ installId: state.meta.installId, original: r.ev.original, supersedesMessageId: current.messageId, uuid, now });
+      await state.db.saveTrim(envelope, null, { removeClipIds: [current.payload.clipId] });
+      return true;
+    });
+  } catch { announce('Could not restore. Try again.'); return; }
+  if (!done || state.review !== r) return;
+  closeTrim();
+  leaveReview();
+  await renderReview(r.eventId);
+  announce('Original restored. Saved on this phone');
+  $('[data-action="trim-open"]')?.focus();
 }
 
 function saveDraft() {
@@ -416,8 +613,12 @@ async function onReviewConflict(e, eventId) {
   return true;
 }
 
+// Every clipId an event has had (original plus trims), so a delete leaves no blob behind.
+const clipIdsOf = (ev) => [...new Set((ev.envelopes || [ev.envelope]).map((e) => e.payload.clipId))];
+
 async function deleteClipAction() {
   const r = state.review;
+  closeTrim();
   const text = r.latest && !r.latest.deleted
     ? 'Delete the audio of this clip? The audio is removed from this phone and the review is marked deleted, so the recording returns to Needs review. Its record and review history stay on this phone.'
     : 'Delete the audio of this clip? The audio is removed from this phone. Its record and review history stay on this phone.';
@@ -434,7 +635,7 @@ async function deleteClipAction() {
       const reviewTombstone = r.latest && !r.latest.deleted
         ? buildReview({ eventId: r.eventId, reviewId: r.latest.reviewId, previous: r.latest, fields: { deleted: true }, uuid, now })
         : null;
-      await state.db.deleteClip({ tombstone, reviewTombstone });
+      await state.db.deleteClip({ tombstone, reviewTombstone, clipIds: clipIdsOf(r.ev) });
       return true;
     });
   } catch (e) { if (!(await onReviewConflict(e, r.eventId))) announce('Could not delete. Try again.'); return; }
@@ -572,7 +773,7 @@ async function deleteExportedAction() {
       await state.db.deleteClip({ tombstone: buildTombstone({
         installId: state.meta.installId, eventId: env.eventId, clipId: env.payload.clipId,
         supersedesMessageId: env.messageId, uuid, now,
-      }) });
+      }), clipIds: clipIdsOf(r) });
     }
     announce(`Deleted the audio of ${n} exported ${n === 1 ? 'clip' : 'clips'}.`);
   } catch { announce('Could not delete every clip. Try again.'); }
@@ -773,6 +974,11 @@ const ACTIONS = {
   save: saveReviewAction,
   undo: undoAction,
   'delete-clip': deleteClipAction,
+  'trim-open': openTrim,
+  'trim-play': toggleTrimPlay,
+  'trim-save': saveTrimAction,
+  'trim-cancel': closeTrim,
+  'trim-restore': restoreTrimAction,
   filter: (b) => { state.filter = b.dataset.filter; render().then(() => $(`[data-filter="${state.filter}"]`)?.focus()); },
   'toggle-deleted': () => { state.showDeleted = !state.showDeleted; render().then(() => $('[data-action="toggle-deleted"]')?.focus()); },
   persist: async () => {
