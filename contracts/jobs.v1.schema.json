@@ -1,0 +1,374 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Siri-Tiri local jobs API v1",
+  "$ref": "#/$defs/jobResponse",
+  "$defs": {
+    "claimRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "workerId"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "leaseSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 900,
+          "default": 60
+        }
+      }
+    },
+    "heartbeatRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "workerId",
+        "leaseToken"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "leaseToken": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "leaseSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 900,
+          "default": 60
+        }
+      }
+    },
+    "ackRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "workerId",
+        "leaseToken",
+        "result"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "leaseToken": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "result": {
+          "type": "object",
+          "required": [
+            "modelVersion",
+            "preprocessingVersion"
+          ],
+          "properties": {
+            "modelVersion": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "preprocessingVersion": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          "description": "Finite JSON only; canonical UTF-8 JSON encoding must not exceed 32768 bytes."
+        }
+      }
+    },
+    "failRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "workerId",
+        "leaseToken",
+        "errorCode"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "type": "integer",
+          "const": 1
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "leaseToken": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "errorCode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_.-]+$"
+        }
+      }
+    },
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "jobId",
+        "messageId",
+        "eventId",
+        "correlationId",
+        "state",
+        "attempts",
+        "workerId",
+        "errorCode",
+        "result",
+        "availableAt",
+        "createdAt",
+        "updatedAt",
+        "completedAt",
+        "leaseExpiresAt"
+      ],
+      "properties": {
+        "jobId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "messageId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "eventId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "correlationId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "leased",
+            "completed",
+            "failed"
+          ]
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5
+        },
+        "workerId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "errorCode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "object",
+              "required": [
+                "modelVersion",
+                "preprocessingVersion"
+              ],
+              "properties": {
+                "modelVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                },
+                "preprocessingVersion": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 128
+                }
+              },
+              "description": "Finite JSON only; canonical UTF-8 JSON encoding must not exceed 32768 bytes."
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "availableAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completedAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "leaseExpiresAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "leaseToken": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "event": {
+          "$ref": "event.v1.schema.json"
+        }
+      }
+    },
+    "inspectionJob": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/job"
+        },
+        {
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "leaseToken"
+                ]
+              },
+              {
+                "required": [
+                  "event"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "claimedJob": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/job"
+        },
+        {
+          "required": [
+            "leaseToken",
+            "event"
+          ],
+          "properties": {
+            "state": {
+              "const": "leased"
+            }
+          }
+        }
+      ]
+    },
+    "jobResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "job"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "job": {
+          "$ref": "#/$defs/inspectionJob"
+        }
+      }
+    },
+    "claimResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "job"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "job": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/claimedJob"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "listResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "items"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1
+        },
+        "items": {
+          "type": "array",
+          "maxItems": 500,
+          "items": {
+            "$ref": "#/$defs/inspectionJob"
+          }
+        }
+      }
+    }
+  }
+}

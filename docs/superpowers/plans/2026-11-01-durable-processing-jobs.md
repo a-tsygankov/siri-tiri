@@ -34,7 +34,7 @@ Interfaces: jobs.migrate(db), jobs.enqueue(db, event), jobs.list_jobs(connect, l
 - [x] Write tests for migration/backfill/repeat/newer-schema rejection, atomic enqueue, deduplication/exclusions, ownership, expiry, retries, results and cross-process recovery/concurrency.
 - [x] Run tests and observe failures before implementation.
 - [x] Implement migrations and job operations with BEGIN IMMEDIATE, fenced tokens, bounded validated inputs and deterministic completion retry semantics.
-- [ ] Run the complete suite, inspect output, and commit the storage implementation and tests.
+- [x] Run the complete suite, inspect output, and commit the storage implementation and tests.
 
 ### Task 2: HTTP and contracts
 
@@ -43,12 +43,21 @@ Files: modify service.py; create local-service/tests/test_job_http.py and contra
 Interfaces: GET /v1/jobs, POST /v1/jobs/claim, POST /v1/jobs/{jobId}/{heartbeat,ack,fail}. Request schemaVersion=1 is mandatory. Responses use {schemaVersion:1, job:...}; listing uses {schemaVersion:1, items:[...]}. Empty claim returns job:null. Success is 200; malformed input 400, unknown ID 404, lease conflict 409, invalid body size 413.
 
 - [x] Write failing isolated HTTP tests covering successful lifecycle, rejection codes, legacy routes and token-free inspection.
-- [ ] Implement routes, version metadata and JSON Schema request contracts with examples; keep existing endpoints compatible.
-- [ ] Run the full suite and an isolated HTTP smoke check; commit API and documentation.
+- [x] Implement routes, version metadata and JSON Schema request contracts with examples; keep existing endpoints compatible.
+- [x] Run the full suite and an isolated HTTP smoke check; commit API and documentation.
 
 ### Task 3: Review and delivery
 
-- [ ] Update approved spec status and PROJECT_PLAN.md to the implemented scope.
-- [ ] Run Python syntax, JSON parsing, git diff --check, and the documented Windows test command.
-- [ ] Obtain independent whole-branch review; resolve actionable issues with regression tests.
+- [x] Update approved spec status and PROJECT_PLAN.md to the implemented scope.
+- [x] Run Python syntax, JSON parsing, git diff --check, and the documented Windows test command.
+- [x] Obtain independent whole-branch review; resolve actionable issues with regression tests.
 - [ ] Push, update PR #4 title/body to final implementation, mark ready and inspect CI. Report unrun Linux/hardware checks and migration rollback limits.
+
+## Execution record
+
+- Task 1 and API implementation committed as f4e51c3. Final Windows command `py -3 -m unittest discover -s local-service/tests -v`: 24 tests passed on Python 3.13.1. TEMP/TMP were set to `.venv/tmp` for sandbox permissions.
+- Independent review found a malformed-correlation-ID failure. Added failing HTTP and legacy migration regressions, then fixed new-input validation and legacy metadata handling. Re-review found no remaining actionable issues.
+- Process-level HTTP smoke passed across three service starts: migration, capture/claim, worker exit and expired-lease reclaim, completion persistence and exact acknowledgment retry after expiry. Temporary databases and ephemeral loopback ports only.
+- Python syntax, contract JSON parsing and `git diff --check` passed. Linux/hardware not run; CI status will be recorded on PR #4.
+- Ruling: implement native/in-session after user approved implementation with “go”; combine storage and API in one tested implementation commit because the HTTP adapter directly exercises the same lifecycle. No extra dependencies or connection pool.
+- Ruling: retain legacy malformed event envelopes, use null job correlation metadata, reject malformed correlation on new input. This preserves accepted data while preventing startup/request failures; legacy envelopes may predate full schema compliance.

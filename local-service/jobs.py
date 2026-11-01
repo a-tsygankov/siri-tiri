@@ -49,10 +49,16 @@ def enqueue(db, event):
     if event['type'] != 'capture':
         return
     now = now_ms()
+    # v0.1 accepted arbitrary correlation values. Keep legacy envelopes intact,
+    # but never bind an invalid value into the indexed job metadata.
+    try:
+        correlation = identifier(event.get('correlationId'))
+    except ValueError:
+        correlation = None
     db.execute('''INSERT INTO jobs
         (job_id,message_id,event_id,correlation_id,state,available_at,created_at,updated_at)
         VALUES (?,?,?,?,'pending',?,?,?) ON CONFLICT(message_id) DO NOTHING''',
-        (event['messageId'], event['messageId'], event['eventId'], event.get('correlationId'), now, now, now))
+        (event['messageId'], event['messageId'], event['eventId'], correlation, now, now, now))
 
 
 def view(row, include_token=False):

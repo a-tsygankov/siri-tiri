@@ -1,6 +1,6 @@
 # Durable local processing jobs
 
-Status: proposed for approval. Implements the next incremental task in CODEX_HANDOFF.md; no inference runtime is included.
+Status: approved by the user on 2026-11-01; implemented and independently reviewed on PR #4. CI/delivery status is recorded on that PR. Implements the next incremental task in CODEX_HANDOFF.md; no inference runtime is included. API and operational details are recorded in local-service/README.md and contracts/jobs.v1.schema.json.
 
 ## Intent and scope
 

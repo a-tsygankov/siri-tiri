@@ -119,6 +119,16 @@ class JobHttpTests(unittest.TestCase):
             new_owned = dict(owned, leaseToken=reclaimed['leaseToken'])
             self.assertEqual(self.send('POST', path + '/heartbeat', new_owned)[0], 409)
 
+    def test_capture_rejects_invalid_correlation_id_without_accepting_it(self):
+        for correlation in ({}, [], None, 'invalid', 42):
+            event = dict(schemaVersion=1, messageId=str(uuid.uuid4()), eventId=str(uuid.uuid4()),
+                         sourceId='invalid-test', createdAt='2026-11-01T00:00:00Z', type='capture',
+                         correlationId=correlation)
+            with self.subTest(correlation=correlation):
+                self.assertEqual(self.send('POST', '/events', event)[0], 400)
+        self.assertEqual(self.send('GET', '/events')[1]['items'], [])
+        self.assertEqual(self.send('GET', '/v1/jobs')[1]['items'], [])
+
 
 if __name__ == '__main__':
     unittest.main()

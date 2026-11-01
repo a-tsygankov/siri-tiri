@@ -38,3 +38,5 @@ Planned lifecycle: independently versioned components and schemas, automatic PWA
 The [local service](local-service/README.md) is a Python 3.11+ localhost-only HTTP API backed by SQLite WAL, with durable event ingestion, idempotent message IDs and structured log storage. Run `py -3 local-service/service.py` on Windows 11 and open `http://127.0.0.1:8765/health`. [Windows CI tests](.github/workflows/local-service-ci.yml) cover persistence, deduplication, validation and logs. [Versioned contracts](contracts/) describe event/log envelopes.
 
 **Current limitations:** no YAMNet inference, audio capture, authenticated LAN access, Cloudflare integration, OTA or auto-update yet. Do not expose the prototype port beyond localhost.
+
+Local service **0.2.0** adds a durable SQLite processing queue with atomic capture enqueue, worker claim leases, heartbeats, result acknowledgment, retry limits and crash recovery. See the [worker API and migration notes](local-service/README.md#durable-processing-jobs-020) before upgrading an existing database. The queue does not run inference automatically.

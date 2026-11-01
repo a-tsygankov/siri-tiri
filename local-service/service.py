@@ -100,6 +100,8 @@ def validate_event(e):
         raise ValueError("unsupported event type")
     if "payload" in e and not isinstance(e["payload"], dict):
         raise ValueError("payload must be an object")
+    if 'correlationId' in e:
+        jobs.identifier(e['correlationId'])
     return e
 
 

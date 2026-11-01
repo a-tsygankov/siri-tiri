@@ -80,6 +80,18 @@ class JobTests(unittest.TestCase):
         with service.connect() as db:
             self.assertEqual([r[0] for r in db.execute('SELECT version FROM schema_migrations ORDER BY version')], [1, 2])
 
+    def test_migration_preserves_legacy_capture_with_malformed_correlation_id(self):
+        event = self.capture()
+        event['correlationId'] = {'legacy': 'malformed'}
+        with service.connect() as db:
+            db.execute('UPDATE messages SET body=? WHERE message_id=?', (json.dumps(event), event['messageId']))
+            db.execute('DROP TABLE jobs')
+            db.execute('DELETE FROM schema_migrations WHERE version=2')
+        service.init_db()
+        job = self.claim()
+        self.assertIsNone(job['correlationId'])
+        self.assertEqual(job['event'], event)
+
     def test_newer_schema_is_rejected_without_modification(self):
         with service.connect() as db:
             db.execute("INSERT INTO schema_migrations VALUES (99, 'future')")
@@ -126,12 +138,13 @@ class JobTests(unittest.TestCase):
                 operation(service.connect, job['jobId'], self.owned(job, **extra))
 
     def test_ack_is_durable_idempotent_and_preserves_reviews(self):
-        self.capture()
+        event = self.capture()
         review = self.capture('review')
         job = self.claim()
         body = self.owned(job, result=self.result())
         completed = jobs.ack(service.connect, job['jobId'], body)
         self.assertEqual(completed['state'], 'completed')
+        self.assertFalse(service.insert_event(event))
         service.init_db()
         self.now.return_value += 1000000
         self.assertEqual(jobs.ack(service.connect, job['jobId'], body), completed)
@@ -164,6 +177,9 @@ class JobTests(unittest.TestCase):
                     available = db.execute('SELECT available_at FROM jobs').fetchone()[0]
                 self.assertGreaterEqual(available - before, 1000)
                 self.assertLessEqual(available - before, 60000)
+                base = [1000, 2000, 4000, 8000][attempt - 1]
+                self.assertGreaterEqual(available - before, base)
+                self.assertLessEqual(available - before, base + 1000)
                 self.now.return_value = available
             else:
                 self.assertEqual(failed['state'], 'failed')
@@ -221,6 +237,26 @@ os._exit(0)
         recovered = self.claim()
         self.assertEqual(recovered['attempts'], 2)
         self.assertNotEqual(recovered['leaseToken'], claimed[0]['leaseToken'])
+
+    def test_process_crash_before_enqueue_commit_accepts_neither_message_nor_job(self):
+        script = '''import os, sys, uuid
+from pathlib import Path
+import service, jobs
+service.DB_PATH = Path(sys.argv[1])
+original = jobs.enqueue
+def crash(db, event):
+    original(db, event)
+    os._exit(17)
+jobs.enqueue = crash
+service.insert_event(dict(schemaVersion=1, messageId=str(uuid.uuid4()), eventId=str(uuid.uuid4()),
+    sourceId='crash-test', createdAt='2026-11-01T00:00:00Z', type='capture'))
+'''
+        completed = subprocess.run([sys.executable, '-B', '-c', script, str(service.DB_PATH)],
+                                   cwd=Path(service.__file__).parent, capture_output=True, text=True, timeout=20)
+        self.assertEqual(completed.returncode, 17, completed.stderr)
+        service.init_db()
+        self.assertEqual(service.list_rows('messages'), [])
+        self.assertEqual(jobs.list_jobs(service.connect), [])
 
 
 if __name__ == '__main__':
