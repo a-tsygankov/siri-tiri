@@ -168,8 +168,7 @@ log(failed ? `FAILED ${failed}` : 'ALL PASS');
 import { Recorder } from '../recorder.js';
 import { sha256Hex } from '../wav.js';
 const ro = document.getElementById('recout');
-const rlog = (s) => { ro.textContent += s + '
-'; };
+const rlog = (s) => { ro.textContent += s + '\n'; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let lastCtx = null;
 const OrigCtx = globalThis.AudioContext;
