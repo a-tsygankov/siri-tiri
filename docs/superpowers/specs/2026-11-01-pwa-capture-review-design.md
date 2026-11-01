@@ -1,6 +1,6 @@
 # Phone PWA: short-clip capture and owner review (local-only slice)
 
-Status: draft for user approval, 2026-11-01. Written after a brainstorming conversation; the "Decided by the user" items are theirs, everything marked "builder's call" or "author's call" is not.
+Status: approved by the user on 2026-11-01; implemented on branch claude/pwa-capture-review (PR number recorded by the controller).
 
 ## Intent and why now
 
