@@ -1,5 +1,6 @@
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
 import uuid
@@ -50,6 +51,33 @@ class ServiceTests(unittest.TestCase):
                    level="WARN", component="local", eventName="sync.retry", message="Offline")
         service.insert_log(log)
         self.assertEqual(service.list_rows("logs"), [log])
+
+    def test_connection_commits_and_closes(self):
+        with service.connect() as db:
+            db.execute("CREATE TABLE connection_probe (value TEXT)")
+            db.execute("INSERT INTO connection_probe VALUES ('committed')")
+        try:
+            with self.assertRaises(sqlite3.ProgrammingError):
+                db.execute("SELECT 1")
+        finally:
+            db.close()
+        with service.connect() as reopened:
+            self.assertEqual(reopened.execute("SELECT value FROM connection_probe").fetchone()[0],
+                             "committed")
+
+    def test_connection_rolls_back_and_closes_on_error(self):
+        with self.assertRaisesRegex(RuntimeError, "abort transaction"):
+            with service.connect() as db:
+                db.execute("CREATE TABLE rollback_probe (value TEXT)")
+                db.execute("INSERT INTO rollback_probe VALUES ('uncommitted')")
+                raise RuntimeError("abort transaction")
+        try:
+            with self.assertRaises(sqlite3.ProgrammingError):
+                db.execute("SELECT 1")
+        finally:
+            db.close()
+        with service.connect() as reopened:
+            self.assertEqual(reopened.execute("SELECT count(*) FROM rollback_probe").fetchone()[0], 0)
 
 
 if __name__ == "__main__":
