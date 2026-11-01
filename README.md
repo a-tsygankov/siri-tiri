@@ -31,3 +31,10 @@ GitHub Pages is deployed from `docs/` using [GitHub Actions](.github/workflows/p
 - [Device/PWA handoff and diagnostic UI requirements](docs/UI_HANDOFF.md)
 
 Planned lifecycle: independently versioned components and schemas, automatic PWA/local-service updates, signed ESP32 OTA with rollback, and structured diagnostics accessible on phone, a Cloudflare-hosted page, and the local service.
+
+
+## First executable prototype: Windows local service
+
+The [local service](local-service/README.md) is a Python 3.11+ localhost-only HTTP API backed by SQLite WAL, with durable event ingestion, idempotent message IDs and structured log storage. Run `py -3 local-service/service.py` on Windows 11 and open `http://127.0.0.1:8765/health`. [Windows CI tests](.github/workflows/local-service-ci.yml) cover persistence, deduplication, validation and logs. [Versioned contracts](contracts/) describe event/log envelopes.
+
+**Current limitations:** no YAMNet inference, audio capture, authenticated LAN access, Cloudflare integration, OTA or auto-update yet. Do not expose the prototype port beyond localhost.
