@@ -459,3 +459,16 @@ An iPhone review of the interactive mockups exposed two problems: a flex-based c
 ## Refreshed cross-device interactive mockup (v4)
 
 [Open the combined round-device and phone companion mockup](connected-ui-v4.html). This single HTML prototype uses a native 466 × 466 SVG viewport with geometry-constrained overlay controls, and a mobile-first Today / Events / Review / Trends / Settings companion. Both surfaces share simulated event labels and microphone state. The circular screen no longer relies on flex-driven aspect ratio sizing; all labels and actions are kept within an inset circle. The phone is a conceptual PWA UI, not connected to actual hardware. The older [round prototype](ui-prototype.html) and [companion prototype](companion-app-design.html) remain available for comparison.
+
+
+## Review v5: hierarchical device flow and expandable phone sections
+
+[Interactive combined mockup](connected-ui-v5.html) · [Earlier v4](connected-ui-v4.html)
+
+**Shared event model**: `context` (Food, Attention, Play, Door, Greeting, Resting, Handling, Other, Unsure), optional `location` (Kitchen, Living room, Bedroom, Hallway, Outside, Other), optional `behavior` (Approaching, Walking, Sitting, Looking at me, Hiding, Eating, Other), optional `outcome` (Fed, Played, Opened door, No action, Other), and explicit `saved` state. In the prototype the existing `label` field represents context; production storage should use a clearly named, versioned schema. Context describes an owner-selected situation or hypothesis; behavior is directly observed. Never imply the model inferred an emotion or translated the meow.
+
+**Round 466×466**: start with four large options (Food, Attention, Play, More). More leads to Door, Greeting, Resting, Handling. Unsure is available immediately. After context selection, offer Location → Behavior → Outcome with Skip on every optional step; show a summary and Save. The physical device should also offer a direct Save now action as soon as context is chosen; this remains an implementation requirement and is not yet fully represented in the v5 prototype. Validate the safe-circle bounds and touch targets on real hardware.
+
+**Phone**: one Review page with expandable Context, Location, Observed behavior and Outcome sections. Keep Save review available and let users skip all optional sections. The v5 prototype shares simulated state with the round UI and is not connected to the Pi, microphone, or persistent storage.
+
+**Validation**: test one-tap quick save, skip, Unsure, editing a saved review, Undo, offline queue, small-circle touch targets, scroll overflow, reduced motion, and VoiceOver labels. Do not equate the demo's local saved flag with successful synchronization.
