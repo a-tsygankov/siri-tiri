@@ -12,9 +12,13 @@ Personalized cat vocalization event assistant and companion UI prototypes. The d
 
 Source files live in [docs/](docs/). These are interactive demos with simulated events, not running firmware or a connected service.
 
-## Phone app (local-only)
+## Phone app
 
-A working installable phone web app lives in [docs/app/](docs/app/README.md): **https://a-tsygankov.github.io/siri-tiri/app/** (available once merged to `main`). It records short clips of Tiri, stores them on the phone in IndexedDB, records the owner's review (hypothesized context plus optional observed location, behavior and outcome), and exports a bundle by hand. It does not sync, upload or run any model, and makes no claim to detect or interpret meows. Tested in desktop browsers only so far; the real-iPhone checklist is pending. See the [app README](docs/app/README.md) for install steps, the export format and known gaps.
+A working installable phone web app lives in [docs/app/](docs/app/README.md): **https://a-tsygankov.github.io/siri-tiri/app/** (available once merged to `main`). It records short clips of Tiri, stores them on the phone in IndexedDB, records the owner's review (hypothesized context plus optional observed location, behavior and outcome), and exports a bundle by hand. Paired with the Worker below, it also syncs clips, audio and reviews with every other paired phone or browser profile. It does not run any model and makes no claim to detect or interpret meows. Tested in desktop browsers only so far; the real-iPhone checklist is pending. See the [app README](docs/app/README.md) for install, pairing, the export format and known gaps.
+
+## Cloud sync Worker
+
+[worker/](worker/README.md) is the Cloudflare Worker (Hono + TypeScript, D1, R2) behind the app's cloud sync: per-device pairing and revocable tokens, idempotent message ingest with review revision chains, verified WAV storage and a cursor-based sync log. Design: [cloud sync spec](docs/superpowers/specs/2026-11-01-cloud-sync-design.md). It runs and is tested locally with Wrangler; it has **not** been deployed and no Cloudflare resources have been created.
 
 ## Design documentation
 

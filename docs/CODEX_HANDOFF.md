@@ -8,7 +8,7 @@ Repository: https://github.com/a-tsygankov/siri-tiri
 
 - `main` contains documentation and interactive mockups under `docs/`, shared v1 JSON Schemas under `contracts/`, and a durable Python SQLite localhost service with an optional YAMNet worker under `local-service/`.
 - Mockup entry point: `docs/connected-ui-v5.html`; README links to GitHub Pages, but actual deployment/device rendering must be verified.
-- Local service 0.3.0 has a pinned CPU YAMNet worker for local PCM16/16-kHz WAVs, plus setup/run/test/status tooling. Cloudflare synchronization, authentication, OTA and production PWA are not implemented.
+- Local service 0.3.0 has a pinned CPU YAMNet worker for local PCM16/16-kHz WAVs, plus setup/run/test/status tooling. The phone PWA (`docs/app/`, 0.2.0) and a Cloudflare Worker (`worker/`, 0.1.0) implement the first cloud sync slice (pairing, message ingest, R2 clips, cursor pull); the Worker is tested locally only and not deployed. OTA and the local-service cloud client are not implemented.
 - The service listens on `127.0.0.1:8765`, persists SQLite schema 2 in `local-service/data/`, and exposes health/version/events/logs and leased job APIs. It is a foundation, not a production server.
 - **Mandatory:** all future repository modifications through feature branches and PRs; no direct commits to `main`. See root `AGENTS.md`.
 

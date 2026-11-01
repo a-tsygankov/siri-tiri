@@ -36,7 +36,7 @@ The last three files add typed review/analysis records and define the next infer
 | `clockSyncedAt` | Last successful time sync, device clock | ESP32 |
 | `monotonicMs` | Milliseconds since boot at capture start, so unsynced captures can be placed relative to their upload | ESP32 |
 
-Receivers stamp `receivedAt` when a message is first durably accepted and keep it next to the message (the local service already does so in `messages.received_at`). Captures without `clockSource` are treated as `"phone"` when `sourceKind` is `"pwa-manual"` and as `"unsynced"` otherwise. The PWA should add `clockSource: "phone"` to new captures; that change is not yet made.
+Receivers stamp `receivedAt` when a message is first durably accepted and keep it next to the message (the local service in `messages.received_at`, the Worker in `messages.received_at` and on every sync entry). Captures without `clockSource` are treated as `"phone"` when `sourceKind` is `"pwa-manual"` and as `"unsynced"` otherwise. The PWA sets `clockSource: "phone"` on new captures since app 0.2.0.
 
 ## Episodes (multi-device grouping)
 
