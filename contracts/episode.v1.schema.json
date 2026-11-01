@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://siri-tiri.example/schemas/episode.v1.schema.json",
+  "title": "Siri-Tiri episode v1",
+  "description": "Append-only revision of an episode: a group of capture events from different sources believed to be one real-world sound. Captures themselves are never rewritten. See docs/superpowers/specs/2026-11-01-episode-grouping-design.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "messageId",
+    "episodeId",
+    "revision",
+    "baseRevision",
+    "editedAt",
+    "source",
+    "reason",
+    "members",
+    "primaryEventId",
+    "windowStartAt",
+    "windowEndAt",
+    "ownerLocked"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "messageId": { "type": "string", "format": "uuid" },
+    "episodeId": { "type": "string", "format": "uuid" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "baseRevision": { "type": ["integer", "null"], "minimum": 1 },
+    "editedAt": { "type": "string", "format": "date-time" },
+    "source": { "enum": ["grouper", "owner"] },
+    "grouperId": { "enum": ["local-service", "worker"] },
+    "algorithmVersion": { "type": "string", "minLength": 1, "maxLength": 64 },
+    "parameters": {
+      "type": "object",
+      "description": "Effective grouping parameters for this revision so it can be reproduced. Keys are algorithm-defined.",
+      "additionalProperties": { "type": ["number", "string", "boolean"] }
+    },
+    "reason": {
+      "enum": [
+        "auto-grouped",
+        "auto-regrouped",
+        "auto-suggestion",
+        "owner-merge",
+        "owner-split",
+        "owner-confirm",
+        "owner-primary",
+        "owner-remove",
+        "tombstone"
+      ]
+    },
+    "applied": {
+      "type": "boolean",
+      "default": true,
+      "description": "False only for auto-suggestion revisions, which are stored but do not change the current episode state."
+    },
+    "members": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 32,
+      "items": { "$ref": "#/$defs/member" }
+    },
+    "primaryEventId": { "type": "string", "format": "uuid" },
+    "windowStartAt": { "type": "string", "format": "date-time" },
+    "windowEndAt": { "type": "string", "format": "date-time" },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "ownerLocked": { "type": "boolean" },
+    "splitFromEpisodeId": { "type": "string", "format": "uuid" },
+    "mergedIntoEpisodeId": { "type": "string", "format": "uuid" },
+    "absorbedEpisodeIds": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "deleted": { "type": "boolean", "default": false },
+    "correlationId": { "type": "string", "format": "uuid" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "source": { "const": "grouper" } } },
+      "then": { "required": ["grouperId", "algorithmVersion", "parameters", "confidence"] }
+    },
+    {
+      "if": { "properties": { "reason": { "const": "auto-suggestion" } } },
+      "then": { "properties": { "applied": { "const": false } } },
+      "else": { "properties": { "applied": { "const": true } } }
+    },
+    {
+      "if": { "required": ["deleted"], "properties": { "deleted": { "const": true } } },
+      "then": { "properties": { "reason": { "const": "tombstone" } } }
+    }
+  ],
+  "$defs": {
+    "member": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["eventId", "sourceId", "startAt", "endAt", "clockSource", "receivedAt"],
+      "properties": {
+        "eventId": { "type": "string", "format": "uuid" },
+        "sourceId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "startAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Capture start in reference (receiver UTC) time after clock offset correction."
+        },
+        "endAt": { "type": "string", "format": "date-time" },
+        "clockSource": { "$ref": "#/$defs/clockSource" },
+        "clockUncertaintyMs": { "type": "integer", "minimum": 0 },
+        "receivedAt": { "type": "string", "format": "date-time" },
+        "qualityScore": { "type": "number", "minimum": 0, "maximum": 1 },
+        "similarityToPrimary": { "type": ["number", "null"], "minimum": -1, "maximum": 1 }
+      }
+    },
+    "clockSource": {
+      "description": "Clock quality of the capturing source. Same vocabulary as the capture payload field clockSource; 'unknown' is used only for legacy captures that carried no value.",
+      "enum": ["phone", "ntp", "unsynced", "host", "unknown"]
+    }
+  }
+}
