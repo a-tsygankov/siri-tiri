@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://siri-tiri.example/schemas/log-event-v1.schema.json",
+  "title": "Siri-Tiri structured diagnostic log event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "timestamp", "level", "component", "instanceId", "version", "eventName", "message", "correlationId"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "level": { "enum": ["debug", "info", "warn", "error", "fatal"] },
+    "component": { "enum": ["esp32", "pwa", "local-service", "worker"] },
+    "instanceId": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "minLength": 1 },
+    "eventName": { "type": "string", "minLength": 1, "maxLength": 100 },
+    "message": { "type": "string", "maxLength": 1000 },
+    "correlationId": { "type": "string", "format": "uuid" },
+    "eventId": { "type": "string", "format": "uuid" },
+    "jobId": { "type": "string", "format": "uuid" },
+    "attributes": {
+      "type": "object",
+      "maxProperties": 32,
+      "additionalProperties": { "type": ["string", "number", "integer", "boolean", "null"] }
+    }
+  }
+}
