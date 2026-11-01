@@ -65,9 +65,10 @@ Keep inference behind a versioned local HTTP API, separate from the Cloudflare A
 ### 3. Train a personal pattern model
 
 - Use YAMNet embeddings as input features for a small classifier; keep YAMNet frozen initially.
-- Use the public CatMeows dataset only for pipeline experiments: 440 clips from 21 cats with brushing, food-waiting, and unfamiliar-isolation contexts. Its record restricts use to scientific research and non-commercial purposes; verify terms before bundling or redistributing it.
-- Treat public context labels as a limited research vocabulary, not reliable labels for Tiri.
-- Train/evaluate with splits grouped by recording session or cat to avoid leakage; evaluate Tiri's model on held-out Tiri data.
+- Use CatMeows v1.0.2 as the provisional pre-Tiri baseline: run the frozen YAMNet Meow-score detector on its 440 positive clips, report coverage and latency by cat-exclusive split, and use its three elicitation contexts for a separate exploratory context-classifier baseline. The first batch report is [CATMEOWS_BASELINE.md](../local-service/CATMEOWS_BASELINE.md).
+- The current TFLite artifact returns 521 class scores, not the 1,024-dimensional embeddings; document the feature source for any context head. Do not imply CatMeows-only evaluation measures false positives or Tiri accuracy.
+- Treat public context labels as recording conditions, not reliable labels for Tiri's intent. Add reviewed household background/other-sound negatives before selecting a detector threshold; evaluate any Tiri model on held-out Tiri sessions.
+- Keep dataset use within its stated scientific/non-commercial terms and preserve attribution/citation.
 - Compare the personalized classifier with a simple context/rule baseline.
 - Return qualified predictions and abstain when confidence or training coverage is low.
 
