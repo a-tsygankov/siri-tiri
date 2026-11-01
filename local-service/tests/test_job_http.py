@@ -95,7 +95,10 @@ class JobHttpTests(unittest.TestCase):
             self.assertEqual(self.send('POST', '/v1/jobs/claim', raw=raw)[0], 400)
         self.assertEqual(self.send('POST', path + '/ack', dict(owned, result={}))[0], 400)
         self.assertEqual(self.send('POST', path + '/fail', dict(owned, errorCode='private exception text'))[0], 400)
-        self.assertEqual(self.send('POST', path + '/heartbeat', raw='x' * 65537)[0], 413)
+        # Verify rejection before uploading the body; an unread oversized upload
+        # can race TCP close/reset on Windows and hide the already-sent response.
+        self.assertEqual(self.send('POST', path + '/heartbeat', raw='', headers={
+            'Content-Type': 'application/json', 'Content-Length': '65537'})[0], 413)
         self.assertEqual(self.send('POST', '/v1/jobs/not-a-uuid/heartbeat', owned)[0], 400)
         self.assertEqual(self.send('POST', path + '/unknown', owned)[0], 404)
         for limit in ('0', '501', 'bad'):
