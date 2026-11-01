@@ -1,0 +1,17 @@
+{
+  "releaseId": "prototype-0.1",
+  "channel": "dev",
+  "status": "example-only",
+  "components": {
+    "pwa": {"version": "0.1.0", "build": "example-sha"},
+    "device": {"version": "0.1.0", "build": "example-sha"},
+    "localService": {"version": "0.1.0", "build": "example-sha"},
+    "worker": {"version": "0.1.0", "build": "example-sha"}
+  },
+  "protocol": {"current": 1, "minimumSupported": 1},
+  "schemas": {"cloudD1": 1, "localSQLite": 1, "eventPayload": 1},
+  "model": {"name": "YAMNet", "version": "unselected", "preprocessingVersion": "unselected"},
+  "rollout": {"percentage": 0, "paused": true},
+  "artifacts": [],
+  "note": "Design example only; do not use for OTA or production deployments."
+}
