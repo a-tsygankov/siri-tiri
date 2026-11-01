@@ -193,3 +193,16 @@ See [Offline Sync, Updates and Observability Architecture](ARCHITECTURE_SYNC_UPD
 - [ ] ESP32 persistent audio/event queues, signed OTA and status UI.
 - [ ] CI/CD, release manifest publishing, migration validation, rollout and rollback tests.
 - [ ] Offline/retry, conflict, OTA interruption and end-to-end correlation tests.
+
+
+### Implementation progress: first foundation commit
+
+- [x] Versioned v1 event and log envelope JSON Schemas in `contracts/`.
+- [x] Minimal Windows/Pi-compatible localhost prototype with SQLite WAL persistence, event deduplication and log ingestion in `local-service/`.
+- [x] Windows GitHub Actions unit-test workflow (execution results not yet verified).
+- [ ] Full JSON Schema validation and compatibility negotiation.
+- [ ] YAMNet inference worker and durable processing claims/leases.
+- [ ] Authenticated LAN and Cloudflare sync, audio R2, device/PWA outboxes.
+- [ ] Update managers, signed OTA and hosted diagnostics.
+
+The initial executable prototype uses dependency-free Python for rapid validation. The long-term local service runtime (.NET/Java/Python) remains an implementation choice; preserve the protocol and SQLite storage contract across changes.
