@@ -171,3 +171,25 @@ Use feedme2 as the implementation reference for the cloud tier, not as a require
 - [Cloudflare D1](https://developers.cloudflare.com/d1/)
 - [Cloudflare R2](https://developers.cloudflare.com/r2/)
 - [Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits/)
+
+
+## Approved infrastructure and lifecycle baseline (2026-11)
+
+See [Offline Sync, Updates and Observability Architecture](ARCHITECTURE_SYNC_UPDATES_LOGGING.md) and the [example release manifest](release-manifest.example.json). This section supersedes any earlier assumption that a continuously running Raspberry Pi or laptop is required.
+
+**Primary prototype:** Windows 11 laptop running the local SQLite-backed analysis service and YAMNet. **Future:** Raspberry Pi with the same service contract. **Cloudflare:** authenticated Workers API, D1 event/job ledger and sync cursors, R2 optional short audio and log archives. Cloudflare Queues is optional notification/processing acceleration, not the authoritative backlog. Cloudflare Containers is a future benchmarked YAMNet option, not a committed inference backend.
+
+**Delivery invariants:** ESP32 and phone retain messages when offline; local service also has a durable queue. At-least-once delivery with idempotency, leases and conflict-safe user review revisions. Optional LAN-first sync, cloud relay when available, and no loss during restart or long laptop outages.
+
+**Lifecycle:** independent SemVer/build SHA for PWA, ESP32, Windows/Pi service and Worker; independent D1/SQLite migration IDs, protocol version and model/preprocessing version. CI publishes compatibility-aware release manifests. PWA updates through Service Worker, Windows/Pi through a supervised verified updater, ESP32 through signed dual-slot OTA and rollback.
+
+**Operations:** common structured logs with correlation IDs; bounded device/PWA outboxes; local rotating logs; authenticated Worker log ingestion; D1 recent indexed diagnostics and R2 archives. View on phone, a Cloudflare-hosted online dashboard and the local service. Do not log raw audio or secrets.
+
+**Next tasks (not yet implemented):**
+- [ ] Shared event/review/analysis/log JSON contracts, protocol compatibility and migrations.
+- [ ] Windows local service with SQLite queue, YAMNet, LAN API and log viewer.
+- [ ] Cloudflare Worker, D1/R2 sync, job leasing, secure log ingestion and hosted diagnostics.
+- [ ] PWA IndexedDB outbox, update detection, review synchronization and diagnostics.
+- [ ] ESP32 persistent audio/event queues, signed OTA and status UI.
+- [ ] CI/CD, release manifest publishing, migration validation, rollout and rollback tests.
+- [ ] Offline/retry, conflict, OTA interruption and end-to-end correlation tests.
