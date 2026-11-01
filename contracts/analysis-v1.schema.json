@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://siri-tiri.example/schemas/analysis-v1.schema.json",
+  "title": "Siri-Tiri audio analysis result",
+  "description": "Versioned model output. Scores are evidence, not a statement of a cat's intent.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "messageId", "eventId", "analyzedAt", "model", "classes"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "messageId": { "type": "string", "format": "uuid" },
+    "eventId": { "type": "string", "format": "uuid" },
+    "analyzedAt": { "type": "string", "format": "date-time" },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "preprocessingVersion"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "preprocessingVersion": { "type": "string", "minLength": 1 },
+        "personalClassifierVersion": { "type": "string" }
+      }
+    },
+    "classes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "score"],
+        "properties": {
+          "label": { "type": "string", "minLength": 1 },
+          "score": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "decision": { "enum": ["cat-sound-likely", "not-cat-sound", "uncertain"] },
+    "decisionThreshold": { "type": "number", "minimum": 0, "maximum": 1 }
+  }
+}
