@@ -181,6 +181,24 @@ def main(argv=None):
             dataset.add_argument('--manifest', type=Path)
             dataset.add_argument('--reports', type=Path)
             dataset.add_argument('--limit', type=int, help='Explicitly labeled subset for debugging')
+    review_commands = ('review-init', 'review-export', 'review-label', 'review-score',
+                       'detector-calibrate', 'detector-freeze', 'detector-evaluate')
+    for name in review_commands:
+        command = sub.add_parser(name)
+        command.add_argument('--dataset-root', type=Path, default=REPO / 'CatMeows')
+        if name == 'review-label':
+            command.add_argument('--clip-id', required=True)
+            command.add_argument('--label', choices=('positive', 'negative', 'uncertain'), required=True)
+            command.add_argument('--reviewer', required=True)
+            command.add_argument('--expected-revision', type=int, required=True)
+            command.add_argument('--note', default='')
+        if name.startswith('detector-'):
+            command.add_argument('--features', type=Path, required=True)
+        if name == 'detector-freeze':
+            command.add_argument('--score', choices=('meow_max', 'cat_or_meow_max'), required=True)
+            command.add_argument('--threshold', type=float, required=True)
+        if name == 'detector-evaluate':
+            command.add_argument('--rule', type=Path, required=True)
     args = parser.parse_args(argv)
     if hasattr(args, 'port') and not 1 <= args.port <= 65535:
         parser.error('port must be 1..65535')
@@ -199,6 +217,8 @@ def main(argv=None):
         return 0
     if args.command == 'run':
         return run_stack(args.port, args.db, args.audio_root)
+    if args.command in review_commands:
+        return review_command(args, argv)
     if args.command in ('smoke', 'analyze', 'prepare-catmeows', 'evaluate-catmeows'):
         require_environment()
         if Path(sys.executable).resolve() != PYTHON.resolve():
@@ -229,6 +249,50 @@ def main(argv=None):
     env = environment()
     env.update(SIRI_TIRI_DB=str(args.db.resolve()), SIRI_TIRI_PORT=str(args.port))
     return subprocess.call([str(PYTHON), '-B', str(ROOT / 'service.py')], env=env)
+
+
+def review_command(args, argv=None):
+    from review_store import ReviewStore, catmeows_inventory
+    from review_artifacts import export_catalog, read_document, save_document
+    store = ReviewStore(args.dataset_root)
+    if args.command == 'review-init':
+        snapshot = store.initialize(catmeows_inventory(args.dataset_root))
+    elif args.command == 'review-label':
+        revision = store.label(args.clip_id, args.label, args.reviewer, args.expected_revision, args.note)
+        print(json.dumps(dict(clipId=args.clip_id, revision=revision, status='saved')))
+        return 0
+    else:
+        snapshot = store.snapshot()
+    if args.command == 'review-init':
+        print(json.dumps(dict(clips=len(snapshot['clips']),
+                              datasetReference=sum(row['labelSource'] == 'dataset_reference' for row in snapshot['clips']),
+                              unreviewed=sum(row['reviewStatus'] == 'unreviewed' for row in snapshot['clips']),
+                              humanReviewed=sum(row['labelSource'] == 'human' for row in snapshot['clips']))))
+        return 0
+    if args.command == 'review-export':
+        print('Review snapshot: ' + str(export_catalog(args.dataset_root / 'reviews' / 'exports', snapshot)))
+        return 0
+    if args.command == 'review-score':
+        require_environment()
+        if Path(sys.executable).resolve() != PYTHON.resolve():
+            return subprocess.call([str(PYTHON), '-B', str(ROOT / 'manage.py')] + (sys.argv[1:] if argv is None else argv), env=environment())
+        from detector_features import score_catalog
+        path = score_catalog(snapshot, args.dataset_root)
+        print('Review features: ' + str(path), flush=True)
+        return 0 if all(row['status'] == 'scored' for row in read_document(path)['rows']) else 1
+    import detector_rules
+    document = read_document(args.features)
+    if args.command == 'detector-freeze':
+        path = detector_rules.freeze(snapshot, document, args.score, args.threshold, args.dataset_root / 'reviews' / 'rules')
+        print('Frozen rule: ' + str(path))
+        return 0
+    if args.command == 'detector-calibrate':
+        report = detector_rules.calibrate(snapshot, document)
+    else:
+        report = detector_rules.evaluate(snapshot, document, read_document(args.rule))
+    path = save_document(args.dataset_root / 'reviews' / 'reports', args.command, report)
+    print(json.dumps(dict(status=report['status'], reasons=report['reasons'], report=str(path))))
+    return 2 if report['reasons'] else 0
 
 
 if __name__ == '__main__':

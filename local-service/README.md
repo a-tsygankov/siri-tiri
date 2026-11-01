@@ -117,6 +117,12 @@ Latency uses monotonic timers, separates model loading, file/hash reading and in
 
 The live worker remains unchanged: to process an explicitly selected derived clip through the queue, set its audio root to the version directory and use the manifest's relative `audioRef`. Batch evaluation alone does not create review labels, populate history, select thresholds or publish any audio/report.
 
+### Human labels and frozen detector rules
+
+The [review workflow](REVIEW_WORKFLOW.md) adds `review-init`, `review-export`, `review-label`, `review-score`, `detector-calibrate`, `detector-freeze` and `detector-evaluate` commands to manage.py. The target is an audible meow anywhere in the clip. A separate SQLite store under ignored CatMeows/reviews/ preserves revisions, while JSON/CSV exports are snapshots rather than editable authority. No API/service database changes are made.
+
+Primary positives retain dataset-reference provenance, and all supplementary clips start unlabeled. Human positive/negative/uncertain reviews require an expected revision and source hash match. Scoring never labels a clip. Calibration requires reviewed negatives and complete compatible features; freezing is explicit, and held-out metrics require complete class/feature coverage. See the workflow for exact commands, exit codes, provenance and existing baseline-exposure limitations.
+
 On Windows PowerShell:
 
 ```powershell

@@ -12,6 +12,7 @@ Google's [MediaPipe Audio Classifier documentation](https://developers.google.co
 - SHA-256: `4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf`.
 - Embedded label file: `yamnet_label_list.txt`; Cat index 76, Purr 77, Meow 78, Hiss 79, Caterwaul 80 (zero-based).
 - Verified runtime interface: float32 input `[15600]`, float32 output `[1,521]`. Classification output only; this variant does not expose embeddings.
+- Detector feature/rule provenance also binds normalized class-map SHA-256 `8e1267a120c1932b7273c0d0e0c5529edbb9a35512b437b1c8982baa59047051` (UTF-8 label names joined with LF plus a final LF), pinned in model-manifest.json.
 
 The checksum was calculated from the initial HTTPS download and pinned in the repository; it is not a publisher signature or independently published checksum. Setup fails closed on future size/hash mismatches and atomically installs only verified bytes. We do not redistribute model binaries or datasets in Git. Keep the upstream model card/terms with any future redistribution; Google's source code is available in the [official YAMNet repository](https://github.com/tensorflow/models/tree/master/research/audioset/yamnet).
 
