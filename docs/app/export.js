@@ -29,11 +29,27 @@ export function isRecordsOnly(row, deletedIds = new Set(), mode) {
   return mode !== 'all' && !!row.exportedAt;
 }
 
+// The WAV files an event contributes: its current clip (`<eventId>.wav`, or
+// `<eventId>.trimmed.wav` when the current clip is a trim), plus the untrimmed original when
+// the current clip is a trim and the original never left the phone (always in 'all').
+// Row shape: { envelope (current), original?, exportedAt, originalExportedAt? }.
+export function clipFilesFor(row, mode) {
+  const cur = row.envelope;
+  const id = cur.eventId;
+  const out = [];
+  const trimmed = !!cur.payload.trim;
+  if (trimmed && row.original && (mode === 'all' || !row.originalExportedAt)) {
+    out.push({ envelope: row.original, filename: `${id}.wav` });
+  }
+  out.push({ envelope: cur, filename: trimmed ? `${id}.trimmed.wav` : `${id}.wav` });
+  return out;
+}
+
 export function buildBundle({ installId, events, tombstones = [], reviewsByEvent, now, mode }) {
   const ids = new Set(events.map((e) => e.envelope.eventId));
   const deleted = new Set(tombstones.map((t) => t.eventId));
   const envelopes = [
-    ...events.map((e) => e.envelope),
+    ...events.flatMap((e) => e.envelopes || [e.envelope]),
     ...tombstones.filter((t) => ids.has(t.eventId)),
   ];
   const reviews = [];
@@ -41,15 +57,17 @@ export function buildBundle({ installId, events, tombstones = [], reviewsByEvent
     const list = [...(reviewsByEvent.get(id) || [])].sort((a, b) => a.revision - b.revision);
     reviews.push(...list);
   }
-  const clips = events.filter((ev) => !isRecordsOnly(ev, deleted, mode)).map(({ envelope: e }) => ({
-    clipId: e.payload.clipId,
-    eventId: e.eventId,
-    filename: `${e.eventId}.wav`,
-    sha256: e.payload.sha256,
-    sizeBytes: e.payload.sizeBytes,
-    sampleRate: e.payload.sampleRate,
-    durationMs: e.payload.durationMs,
-  }));
+  const clips = events.filter((ev) => !isRecordsOnly(ev, deleted, mode))
+    .flatMap((ev) => ev.clipFiles || clipFilesFor(ev, mode))
+    .map(({ envelope: e, filename }) => ({
+      clipId: e.payload.clipId,
+      eventId: e.eventId,
+      filename,
+      sha256: e.payload.sha256,
+      sizeBytes: e.payload.sizeBytes,
+      sampleRate: e.payload.sampleRate,
+      durationMs: e.payload.durationMs,
+    }));
   return {
     exportVersion: 1,
     appVersion: APP_VERSION,

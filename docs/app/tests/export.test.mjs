@@ -223,3 +223,51 @@ test('shareFiles falls back to downloads and reports how many files were downloa
   assert.deepEqual(modes, ['download', 'download']);
   assert.equal(log.length, 0);
 });
+
+import { buildTrim } from '../records.js';
+import { clipFilesFor } from '../export.js';
+
+const trimOf = (a) => buildTrim({
+  installId: 'inst', original: a.envelope, supersedesMessageId: a.envelope.messageId,
+  clipId: 'trimmed', sha256: 'def', sizeBytes: 16044, durationMs: 500, clippedSamples: 0, startMs: 100, endMs: 600, uuid, now,
+});
+
+test('buildBundle carries every capture message of a trimmed event and a manifest entry per clip file', () => {
+  const a = row();
+  const t = trimOf(a);
+  const ev = {
+    envelope: t, original: a.envelope, envelopes: [a.envelope, t], exportedAt: null,
+    clipFiles: [{ envelope: a.envelope, filename: `${a.envelope.eventId}.wav` }, { envelope: t, filename: `${a.envelope.eventId}.trimmed.wav` }],
+  };
+  const bundle = buildBundle({ installId: 'inst', events: [ev], tombstones: [], reviewsByEvent: new Map(), now, mode: 'all' });
+  assert.deepEqual(bundle.events, [a.envelope, t]);
+  assert.deepEqual(bundle.clips, [
+    { clipId: a.envelope.payload.clipId, eventId: a.envelope.eventId, filename: `${a.envelope.eventId}.wav`, sha256: 'abc', sizeBytes: 32044, sampleRate: 16000, durationMs: 1000 },
+    { clipId: 'trimmed', eventId: a.envelope.eventId, filename: `${a.envelope.eventId}.trimmed.wav`, sha256: 'def', sizeBytes: 16044, sampleRate: 16000, durationMs: 500 },
+  ]);
+  // Records only: no manifest entries, all messages still present.
+  const ro = buildBundle({ installId: 'inst', events: [{ ...ev, recordsOnly: true }], tombstones: [], reviewsByEvent: new Map(), now, mode: 'all' });
+  assert.deepEqual(ro.events, [a.envelope, t]);
+  assert.deepEqual(ro.clips, []);
+});
+
+test('clipFilesFor: the current clip always; the original too only when unexported or in all mode', () => {
+  const a = row('2026-10-31T00:00:00Z');
+  const t = trimOf(a);
+  const id = a.envelope.eventId;
+  const exportedOriginal = { envelope: t, original: a.envelope, exportedAt: null, originalExportedAt: '2026-10-31T00:00:00Z' };
+  assert.deepEqual(clipFilesFor(exportedOriginal, 'new').map((c) => c.filename), [`${id}.trimmed.wav`]);
+  assert.deepEqual(clipFilesFor(exportedOriginal, 'all').map((c) => c.filename), [`${id}.wav`, `${id}.trimmed.wav`]);
+  const fresh = { envelope: t, original: a.envelope, exportedAt: null, originalExportedAt: null };
+  assert.deepEqual(clipFilesFor(fresh, 'new').map((c) => c.filename), [`${id}.wav`, `${id}.trimmed.wav`]);
+  const untrimmed = { envelope: a.envelope, original: a.envelope, exportedAt: null, originalExportedAt: null };
+  assert.deepEqual(clipFilesFor(untrimmed, 'new').map((c) => c.filename), [`${id}.wav`]);
+  assert.deepEqual(clipFilesFor({ envelope: a.envelope, exportedAt: null }, 'new').map((c) => c.filename), [`${id}.wav`]);
+});
+
+test('selectEvents new picks a trimmed event whose current message is unexported', () => {
+  const a = row('2026-10-31T00:00:00Z');
+  const t = trimOf(a);
+  const trimmedRow = { envelope: t, original: a.envelope, exportedAt: null, originalExportedAt: '2026-10-31T00:00:00Z' };
+  assert.deepEqual(selectEvents([trimmedRow], new Map(), 'new'), [trimmedRow]);
+});

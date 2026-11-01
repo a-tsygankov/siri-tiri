@@ -100,3 +100,70 @@ export function storageState({ clips, bytes }) {
   if (clips >= LIMITS.warnClips || bytes >= LIMITS.warnBytes) return 'warn';
   return 'ok';
 }
+
+export const TRIM_VERSION = 'pwa-trim-v1';
+
+const isTombstone = (env) => !!env?.payload && env.payload.deleted === true;
+
+// A trim is a new immutable capture message for the same event. It supersedes the current
+// capture message of the event, carries the trimmed audio fields, and `trim` names the cut on
+// the ORIGINAL recording (never on an earlier trim), so trimmed audio stays traceable to the
+// original clipId and sha256.
+export function buildTrim({ installId, original, supersedesMessageId, clipId, sha256, sizeBytes, durationMs, clippedSamples, startMs, endMs, uuid, now }) {
+  const src = original.payload;
+  if (src.trim || src.restoresMessageId || src.supersedesMessageId) throw new Error('trim source must be the original capture');
+  if (!(startMs >= 0) || !(endMs > startMs) || endMs > src.durationMs) throw new Error('trim range outside the clip');
+  if (endMs - startMs < LIMITS.minMs) throw new Error(`trim too short (under ${LIMITS.minMs} ms)`);
+  if (startMs === 0 && endMs === src.durationMs) throw new Error('trim keeps the whole clip');
+  return {
+    schemaVersion: PROTOCOL_VERSION,
+    messageId: uuid(),
+    eventId: original.eventId,
+    sourceId: installId,
+    createdAt: now(),
+    type: 'capture',
+    payload: {
+      clipId, sampleRate: src.sampleRate, durationMs, sizeBytes, sha256, clippedSamples,
+      recordedAt: new Date(Date.parse(src.recordedAt) + startMs).toISOString(),
+      interrupted: src.interrupted,
+      encoding: 'pcm16-wav', channels: 1,
+      captureVersion: 'pwa-pcm16-native-v1', sourceKind: 'pwa-manual',
+      supersedesMessageId,
+      trim: {
+        sourceMessageId: original.messageId, sourceClipId: src.clipId, sourceSha256: src.sha256,
+        sourceDurationMs: src.durationMs, startMs, endMs, trimVersion: TRIM_VERSION,
+      },
+    },
+  };
+}
+
+// Makes the untrimmed original the current clip again: a new message with the audio fields of
+// the original, superseding the current trim. No audio is copied; the original WAV never left.
+export function buildRestore({ installId, original, supersedesMessageId, uuid, now }) {
+  return {
+    schemaVersion: PROTOCOL_VERSION,
+    messageId: uuid(),
+    eventId: original.eventId,
+    sourceId: installId,
+    createdAt: now(),
+    type: 'capture',
+    payload: { ...original.payload, supersedesMessageId, restoresMessageId: original.messageId },
+  };
+}
+
+export const isTrimmed = (env) => !!env?.payload?.trim;
+
+// Among the capture messages of one event: the live one (not superseded by another live
+// capture). Tombstones are ignored here; the caller decides what a deleted event shows.
+export function currentCapture(envelopes) {
+  const live = (envelopes || []).filter((e) => !isTombstone(e));
+  const superseded = new Set(live.map((e) => e.payload.supersedesMessageId).filter(Boolean));
+  const heads = live.filter((e) => !superseded.has(e.messageId));
+  if (!heads.length) return null;
+  return heads.reduce((a, b) => (b.createdAt > a.createdAt ? b : a));
+}
+
+// The root capture: the live message that supersedes nothing.
+export function originalCapture(envelopes) {
+  return (envelopes || []).find((e) => !isTombstone(e) && !e.payload.supersedesMessageId) || null;
+}
