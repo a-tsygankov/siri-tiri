@@ -1,0 +1,160 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>db.js harness</title>
+<pre id="out"></pre>
+<script type="module">
+const out = document.getElementById('out');
+const log = (s) => { out.textContent += s + '\n'; };
+const uuid = () => crypto.randomUUID();
+const now = () => new Date().toISOString();
+const dbName = 'siri-tiri-harness-' + Date.now();
+let failed = 0;
+
+async function check(name, fn) {
+  try { await fn(); log('PASS ' + name); }
+  catch (e) { failed++; log('FAIL ' + name + ' :: ' + (e && e.message || e)); }
+}
+function assert(c, m) { if (!c) throw new Error(m || 'assertion failed'); }
+
+let openDb, records, wav, db;
+try {
+  records = await import('../records.js');
+  wav = await import('../wav.js');
+  openDb = (await import('../db.js')).default;
+  db = await openDb(dbName);
+} catch (e) {
+  log('FAIL module load :: ' + e.message);
+  log('FAILED 1 (module missing)');
+  throw e;
+}
+
+const { buildCapture, buildTombstone, buildReview } = records;
+function makeClip() {
+  const wavBytes = wav.encodeWav(new Int16Array(800), 16000);
+  return { blob: new Blob([wavBytes], { type: 'audio/wav' }), size: wavBytes.length };
+}
+function capture(meta, clipId, size) {
+  return buildCapture({ installId: meta.installId, clipId, sampleRate: 16000, durationMs: 50,
+    sizeBytes: size, sha256: 'a'.repeat(64), clippedSamples: 0, recordedAt: now(),
+    interrupted: false, uuid, now });
+}
+
+const meta = await db.getMeta();
+const clipA = makeClip();
+const clipIdA = uuid();
+const envA = capture(meta, clipIdA, clipA.size);
+
+await check('meta created with pwa- prefix', async () => {
+  assert(/^pwa-/.test(meta.installId), meta.installId);
+  assert(meta.schemaVersion === 1, 'schemaVersion');
+  assert((await db.getMeta()).installId === meta.installId, 'stable');
+  await db.setMeta({ persistGranted: true });
+  assert((await db.getMeta()).persistGranted === true, 'setMeta');
+});
+
+await check('saveCapture then listEvents/getClip', async () => {
+  await db.saveCapture(envA, clipA.blob);
+  const evs = await db.listEvents();
+  assert(evs.length === 1, 'count ' + evs.length);
+  assert(evs[0].envelope.messageId === envA.messageId, 'envelope');
+  const b = await db.getClip(clipIdA);
+  assert(b instanceof Blob && b.size === clipA.size, 'blob size');
+  const one = await db.getEvent(envA.eventId);
+  assert(one && one.envelope.eventId === envA.eventId, 'getEvent');
+});
+
+let r1, r2;
+await check('saveReview twice yields revisions 1 and 2, same reviewId', async () => {
+  const reviewId = uuid();
+  r1 = buildReview({ eventId: envA.eventId, reviewId, previous: null, fields: { context: 'food' }, uuid, now });
+  await db.saveReview(r1);
+  r2 = buildReview({ eventId: envA.eventId, reviewId, previous: r1, fields: { note: 'x' }, uuid, now });
+  await db.saveReview(r2);
+  const list = await db.listReviews(envA.eventId);
+  assert(list.length === 2, 'len ' + list.length);
+  assert(list.map(r => r.revision).join() === '1,2', 'revisions ' + list.map(r => r.revision));
+  assert(list[0].reviewId === list[1].reviewId, 'reviewId');
+  assert(!('eventRevision' in list[0]), 'eventRevision stripped');
+  const all = await db.allReviews();
+  assert(all.get(envA.eventId).length === 2 && !('eventRevision' in all.get(envA.eventId)[0]), 'allReviews');
+});
+
+await check('drafts put/get and removed after saveReview', async () => {
+  await db.putDraft(envA.eventId, { context: 'play' });
+  const d = await db.getDraft(envA.eventId);
+  assert(d && d.context === 'play' || d && d.fields && d.fields.context === 'play', 'draft stored');
+  const r3 = buildReview({ eventId: envA.eventId, reviewId: r1.reviewId, previous: r2, fields: { context: 'play' }, uuid, now });
+  await db.saveReview(r3);
+  assert((await db.getDraft(envA.eventId)) == null, 'draft removed');
+});
+
+await check('markExported sets exportedAt', async () => {
+  const when = now();
+  await db.markExported([envA.eventId], when);
+  const ev = await db.getEvent(envA.eventId);
+  assert(ev.exportedAt === when, 'exportedAt ' + ev.exportedAt);
+  assert((await db.listEvents())[0].exportedAt === when, 'listEvents exportedAt');
+});
+
+await check('usage counts', async () => {
+  const u = await db.usage();
+  assert(u.clips === 1 && u.bytes === clipA.size, JSON.stringify(u));
+});
+
+await check('fault injection: saveCapture rejects and nothing persisted', async () => {
+  const clipB = makeClip();
+  const idB = uuid();
+  const envB = capture(meta, idB, clipB.size);
+  const before = JSON.stringify(await db.listEvents());
+  const orig = IDBObjectStore.prototype.put;
+  let thrown = false;
+  IDBObjectStore.prototype.put = function (...a) {
+    if (!thrown) { thrown = true; throw new Error('injected'); }
+    return orig.apply(this, a);
+  };
+  let rejected = false;
+  try { await db.saveCapture(envB, clipB.blob); } catch { rejected = true; }
+  finally { IDBObjectStore.prototype.put = orig; }
+  assert(thrown, 'fault not triggered');
+  assert(rejected, 'did not reject');
+  assert(JSON.stringify(await db.listEvents()) === before, 'events changed');
+  assert((await db.getClip(idB)) === null, 'clip leaked');
+  assert((await db.usage()).clips === 1, 'usage changed');
+});
+
+await check('deleteClip hides event, getClip null, tombstones listed', async () => {
+  const tomb = buildTombstone({ installId: meta.installId, eventId: envA.eventId, clipId: clipIdA,
+    supersedesMessageId: envA.messageId, uuid, now });
+  const latest = (await db.listReviews(envA.eventId)).at(-1);
+  const rt = buildReview({ eventId: envA.eventId, reviewId: latest.reviewId, previous: latest, fields: { deleted: true }, uuid, now });
+  await db.deleteClip({ tombstone: tomb, reviewTombstone: rt });
+  assert((await db.listEvents()).length === 0, 'event still listed');
+  assert((await db.getClip(clipIdA)) === null, 'clip still present');
+  const ts = await db.listTombstones();
+  assert(ts.length === 1 && ts[0].messageId === tomb.messageId, 'tombstones');
+  assert((await db.usage()).clips === 0, 'usage');
+  // null reviewTombstone variant
+  const clipC = makeClip(); const idC = uuid(); const envC = capture(meta, idC, clipC.size);
+  await db.saveCapture(envC, clipC.blob);
+  const tc = buildTombstone({ installId: meta.installId, eventId: envC.eventId, clipId: idC,
+    supersedesMessageId: envC.messageId, uuid, now });
+  await db.deleteClip({ tombstone: tc, reviewTombstone: null });
+  assert((await db.listEvents()).length === 0, 'second event listed');
+});
+
+await check('clearAll keeps installId', async () => {
+  await db.clearAll();
+  const m = await db.getMeta();
+  assert(m.installId === meta.installId, 'installId changed');
+  assert(m.persistGranted === true, 'persistGranted lost');
+  assert((await db.listEvents()).length === 0 && (await db.listTombstones()).length === 0, 'not empty');
+  assert((await db.usage()).clips === 0, 'usage');
+});
+
+db.close?.();
+await new Promise((res) => {
+  const rq = indexedDB.deleteDatabase(dbName);
+  rq.onsuccess = rq.onerror = rq.onblocked = () => res();
+});
+log(failed ? `FAILED ${failed}` : 'ALL PASS');
+</script>
