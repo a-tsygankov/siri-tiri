@@ -361,6 +361,9 @@ await scheck('outbox: listOutbox pending, updateOutbox, markAccepted, deleteOutb
   sassert((await sdb.getEvent(env1.eventId)).acceptedAt === '2026-11-01T12:00:00Z', 'acceptedAt on event');
   await sdb.deleteOutbox(env1.messageId);
   sassert((await sdb.listOutbox({ states: ['pending', 'failed', 'conflict', 'sent'] })).length === 0, 'deleted');
+  await sdb.putOutbox({ messageId: env1.messageId, kind: 'event', state: 'failed', attempts: 0, createdAt: now(), nextAttemptAt: 0, lastError: 'clip_mismatch' });
+  sassert((await sdb.listOutbox({ states: ['failed'] }))[0].lastError === 'clip_mismatch', 'putOutbox');
+  await sdb.deleteOutbox(env1.messageId);
 });
 
 await scheck('listClipsToUpload only lists local clips of accepted captures; markUploaded clears them', async () => {
@@ -369,6 +372,9 @@ await scheck('listClipsToUpload only lists local clips of accepted captures; mar
   const c2 = sclip(); const env2 = scapture(uuid(), c2.size);
   await sdb.saveCapture(env2, c2.blob); // not accepted yet
   sassert((await sdb.listClipsToUpload()).length === 1, 'unaccepted capture listed');
+  await sdb.markUploadFailed(clipId1, 'clip_mismatch');
+  sassert((await sdb.listClipsToUpload()).length === 0, 'failed clip still listed');
+  sassert((await sdb.getClipRow(clipId1)).uploadError === 'clip_mismatch', 'uploadError');
   await sdb.markUploaded(clipId1, '2026-11-01T12:00:05Z');
   sassert((await sdb.listClipsToUpload()).length === 0, 'uploaded still listed');
   const row = await sdb.getClipRow(clipId1);

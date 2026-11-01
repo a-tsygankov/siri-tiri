@@ -297,6 +297,11 @@ export default async function openDb(name = 'siri-tiri') {
     });
   }
 
+  // Writes a full outbox row (used to surface a terminal clip failure after acceptance).
+  async function putOutbox(row) {
+    await run(db, ['outbox'], 'readwrite', ({ outbox }) => { outbox.put(row); });
+  }
+
   async function deleteOutbox(messageId) {
     await run(db, ['outbox'], 'readwrite', ({ outbox }) => { outbox.delete(messageId); });
   }
@@ -320,11 +325,19 @@ export default async function openDb(name = 'siri-tiri') {
       acceptedByClip.set(e.envelope.payload.clipId, e);
     }
     return clips
-      .filter((c) => (c.origin ?? 'local') === 'local' && c.blob && !c.uploadedAt && acceptedByClip.has(c.clipId))
+      .filter((c) => (c.origin ?? 'local') === 'local' && c.blob && !c.uploadedAt && !c.uploadError && acceptedByClip.has(c.clipId))
       .map((c) => {
         const e = acceptedByClip.get(c.clipId);
         return { clipId: c.clipId, eventId: e.eventId, messageId: e.messageId, blob: c.blob, sha256: e.envelope.payload.sha256, sizeBytes: c.size };
       });
+  }
+
+  // A terminal upload refusal (size/hash mismatch): the clip is never offered for upload again.
+  async function markUploadFailed(clipId, reason) {
+    await run(db, ['clips'], 'readwrite', async ({ clips }) => {
+      const row = await req(clips.get(clipId));
+      if (row) clips.put({ ...row, uploadError: reason });
+    });
   }
 
   async function markUploaded(clipId, when) {
@@ -413,7 +426,7 @@ export default async function openDb(name = 'siri-tiri') {
     getMeta, setMeta, saveCapture, listEvents, listTombstones, getEvent, getClip, getClipRow,
     listReviews, allReviews, saveReview, getDraft, putDraft, deleteClip,
     markExported, usage, clearAll, close,
-    getSyncState, setSyncState, listOutbox, updateOutbox, deleteOutbox, markAccepted,
-    listClipsToUpload, markUploaded, applyRemote, listClipStubs, storeRemoteClip, listConflicts, deleteConflict,
+    getSyncState, setSyncState, listOutbox, updateOutbox, putOutbox, deleteOutbox, markAccepted,
+    listClipsToUpload, markUploaded, markUploadFailed, applyRemote, listClipStubs, storeRemoteClip, listConflicts, deleteConflict,
   };
 }
