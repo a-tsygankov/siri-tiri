@@ -70,3 +70,9 @@ CREATE TABLE sync_log (
   created_at TEXT NOT NULL
 );
 CREATE INDEX idx_sync_log_created ON sync_log(created_at);
+
+-- Small named counters (for example consecutive failed pairing attempts).
+CREATE TABLE counters (
+  key TEXT PRIMARY KEY,
+  value INTEGER NOT NULL DEFAULT 0
+);
