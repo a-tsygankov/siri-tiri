@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { MAX_CLIP_BYTES, MAX_MESSAGES_BODY_BYTES, MAX_MESSAGES_PER_REQUEST, MIGRATION, PROTOCOL_VERSION, WORKER_VERSION, type Env } from './env';
 import { ingest } from './messages';
 import { getClip, putClip } from './clips';
+import { conflicts, pageParams, pull } from './sync';
 import { log } from './log';
 import { createPairingCode, listDevices, pairDevice, requestNow, requireAdmin, requireDevice, revokeDevice, type AuthVars } from './auth';
 
@@ -102,6 +103,18 @@ app.get('/v1/clips/:clipId', requireDevice, async (c) => {
   return new Response(found.object.body, {
     headers: { 'Content-Type': 'audio/wav', 'Content-Length': String(found.sizeBytes), ETag: `"${found.sha256}"`, 'Cache-Control': 'private, max-age=0' },
   });
+});
+
+app.get('/v1/sync', requireDevice, async (c) => {
+  const params = pageParams({ cursor: c.req.query('cursor'), limit: c.req.query('limit') });
+  if (!params) return c.json({ error: 'bad_request', requestId: c.get('requestId') }, 400);
+  return c.json(await pull(c.env, params.cursor, params.limit));
+});
+
+app.get('/v1/conflicts', requireDevice, async (c) => {
+  const params = pageParams({ cursor: c.req.query('cursor'), limit: c.req.query('limit') });
+  if (!params) return c.json({ error: 'bad_request', requestId: c.get('requestId') }, 400);
+  return c.json(await conflicts(c.env, params.cursor, params.limit));
 });
 
 app.notFound((c) => c.json({ error: 'not_found', requestId: c.get('requestId') }, 404));
