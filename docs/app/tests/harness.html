@@ -158,3 +158,66 @@ await new Promise((res) => {
 });
 log(failed ? `FAILED ${failed}` : 'ALL PASS');
 </script>
+<p>
+<button id="rec2">Record 2 s</button>
+<button id="rechide">Record then hide</button>
+<button id="rec100">Stop at 100 ms</button>
+</p>
+<pre id="recout"></pre>
+<script type="module">
+import { Recorder } from '../recorder.js';
+import { sha256Hex } from '../wav.js';
+const ro = document.getElementById('recout');
+const rlog = (s) => { ro.textContent += s + '
+'; };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let lastCtx = null;
+const OrigCtx = globalThis.AudioContext;
+globalThis.AudioContext = class extends OrigCtx { constructor(...a) { super(...a); lastCtx = this; } };
+const mk = () => new Recorder({ onLevel() {}, onTick() {}, onAutoStop() {} });
+const guard = (id, fn) => document.getElementById(id).addEventListener('click', async () => {
+  try { await fn(); } catch (e) { rlog('FAIL ' + id + ' :: ' + (e && e.message || e)); }
+});
+const ok = (c, m) => rlog((c ? 'PASS ' : 'FAIL ') + m);
+
+guard('rec2', async () => {
+  const r = mk();
+  const stream = await Recorder.requestPermission();
+  await r.start(stream);
+  await sleep(2000);
+  const clip = await r.stop();
+  rlog('sampleRate ' + clip.sampleRate + ' durationMs ' + clip.durationMs.toFixed(1));
+  ok(Math.abs(clip.durationMs - 2000) <= 150, 'duration within 150 ms of 2000');
+  const frames = Math.round(clip.sampleRate * clip.durationMs / 1000);
+  ok(clip.sizeBytes === 44 + 2 * frames, 'sizeBytes ' + clip.sizeBytes + ' == 44 + 2*' + frames);
+  ok(clip.blob.type === 'audio/wav' && clip.blob.size === clip.sizeBytes, 'blob type/size');
+  ok(await sha256Hex(clip.wavBytes) === clip.sha256, 'sha256 matches');
+  ok(lastCtx.state === 'closed', 'AudioContext closed (' + lastCtx.state + ')');
+  ok(stream.getTracks().every((t) => t.readyState === 'ended'), 'tracks ended');
+});
+
+guard('rechide', async () => {
+  const r = mk();
+  const stream = await Recorder.requestPermission();
+  await r.start(stream);
+  await sleep(1000);
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+  document.dispatchEvent(new Event('visibilitychange'));
+  const clip = await r.stop();
+  delete document.hidden;
+  ok(clip.interrupted === true, 'interrupted === true');
+  ok(lastCtx.state === 'closed', 'AudioContext closed');
+});
+
+guard('rec100', async () => {
+  const r = mk();
+  const stream = await Recorder.requestPermission();
+  await r.start(stream);
+  await sleep(100);
+  let msg = null;
+  try { await r.stop(); } catch (e) { msg = e.message; }
+  ok(msg === 'too_short', 'too_short (got ' + msg + ')');
+  ok(lastCtx.state === 'closed', 'AudioContext closed');
+  ok(stream.getTracks().every((t) => t.readyState === 'ended'), 'tracks ended');
+});
+</script>
