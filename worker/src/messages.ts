@@ -89,8 +89,8 @@ async function ingestOne(env: Env, device: Device, kind: Kind, body: Doc, at: st
       const clip = clipFromPayload(payload);
       if (clip) {
         statements.push(env.DB.prepare(
-          'INSERT OR IGNORE INTO clips (clip_id, event_id, message_id, device_id, sha256, size_bytes, r2_key) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        ).bind(clip.clipId, eventId, messageId, device.deviceId, clip.sha256, clip.sizeBytes, r2Key(eventId!, clip.clipId)));
+          'INSERT OR IGNORE INTO clips (clip_id, event_id, message_id, device_id, source_id, sha256, size_bytes, r2_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        ).bind(clip.clipId, eventId, messageId, device.deviceId, device.sourceId, clip.sha256, clip.sizeBytes, r2Key(eventId!, clip.clipId)));
       }
     }
   }

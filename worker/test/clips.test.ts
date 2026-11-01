@@ -126,3 +126,33 @@ describe('clips', () => {
     expect((await put(dev.token, cap.payload.clipId, big)).status).toBe(413);
   });
 });
+
+describe('clips: review fixes', () => {
+  it('a re-paired device (same sourceId, new token) can upload its own clip', async () => {
+    const a = await pairedDevice('A');
+    const bytes = wavBytes();
+    const cap = await acceptedCapture(a.token, bytes);
+    // Unpair + pair again: new device row, same installation (sourceId).
+    const { mintCode } = await import('./helpers');
+    const code = await mintCode('A again');
+    const again = await post(null, '/v1/devices/pair', { code, sourceId: a.sourceId, component: 'pwa', version: '0.2.0', label: 'A again' });
+    expect(again.status).toBe(201);
+    const { token } = (await again.json()) as { token: string };
+    expect((await put(token, cap.payload.clipId, bytes)).status).toBe(201);
+  });
+
+  it('a repeat upload after a partial commit (uploaded_at set, no log row) repairs the sync log', async () => {
+    const dev = await pairedDevice();
+    const bytes = wavBytes();
+    const cap = await acceptedCapture(dev.token, bytes);
+    await env.CLIPS.put(`clips/${cap.eventId}/${cap.payload.clipId}.wav`, bytes);
+    await env.DB.prepare('UPDATE clips SET uploaded_at = ? WHERE clip_id = ?').bind('2026-11-01T12:00:00.000Z', cap.payload.clipId).run();
+    const res = await put(dev.token, cap.payload.clipId, bytes);
+    expect(res.status).toBe(200);
+    const row = await env.DB.prepare("SELECT count(*) AS n FROM sync_log WHERE kind = 'clip' AND ref_id = ?").bind(cap.payload.clipId).first<{ n: number }>();
+    expect(row?.n).toBe(1);
+    expect((await put(dev.token, cap.payload.clipId, bytes)).status).toBe(200);
+    const again = await env.DB.prepare("SELECT count(*) AS n FROM sync_log WHERE kind = 'clip' AND ref_id = ?").bind(cap.payload.clipId).first<{ n: number }>();
+    expect(again?.n).toBe(1);
+  });
+});

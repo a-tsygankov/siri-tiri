@@ -54,6 +54,7 @@ CREATE TABLE clips (
   event_id TEXT NOT NULL,
   message_id TEXT NOT NULL,
   device_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
   sha256 TEXT NOT NULL,
   size_bytes INTEGER NOT NULL,
   r2_key TEXT NOT NULL,
