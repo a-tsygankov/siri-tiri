@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { MAX_MESSAGES_BODY_BYTES, MAX_MESSAGES_PER_REQUEST, MIGRATION, PROTOCOL_VERSION, WORKER_VERSION, type Env } from './env';
+import { MAX_CLIP_BYTES, MAX_MESSAGES_BODY_BYTES, MAX_MESSAGES_PER_REQUEST, MIGRATION, PROTOCOL_VERSION, WORKER_VERSION, type Env } from './env';
 import { ingest } from './messages';
+import { getClip, putClip } from './clips';
 import { log } from './log';
 import { createPairingCode, listDevices, pairDevice, requestNow, requireAdmin, requireDevice, revokeDevice, type AuthVars } from './auth';
 
@@ -73,6 +74,34 @@ app.post('/v1/messages', requireDevice, async (c) => {
   }
   const results = await ingest(c.env, c.get('device'), items, requestNow(c), c.get('requestId'));
   return c.json({ results });
+});
+
+const PUT_STATUS: Record<string, [number, string]> = {
+  not_found: [404, 'not_found'], deleted: [410, 'clip_deleted'], forbidden: [403, 'forbidden'], mismatch: [409, 'clip_mismatch'],
+};
+
+app.put('/v1/clips/:clipId', requireDevice, async (c) => {
+  const requestId = c.get('requestId');
+  const type = (c.req.header('Content-Type') ?? '').split(';')[0].trim().toLowerCase();
+  if (type !== 'audio/wav' && type !== 'audio/x-wav') return c.json({ error: 'unsupported_media_type', requestId }, 415);
+  const length = Number(c.req.header('Content-Length') ?? '0');
+  if (length > MAX_CLIP_BYTES) return c.json({ error: 'too_large', requestId }, 413);
+  const body = await c.req.arrayBuffer();
+  if (body.byteLength > MAX_CLIP_BYTES) return c.json({ error: 'too_large', requestId }, 413);
+  const clipId = c.req.param('clipId');
+  const result = await putClip(c.env, c.get('device'), clipId, body, requestNow(c), requestId);
+  if (result.status === 'uploaded') return c.json({ clipId, uploadedAt: result.uploadedAt }, 201);
+  if (result.status === 'already') return c.json({ clipId, uploadedAt: result.uploadedAt }, 200);
+  const [status, error] = PUT_STATUS[result.status];
+  return c.json({ error, requestId }, status as 404);
+});
+
+app.get('/v1/clips/:clipId', requireDevice, async (c) => {
+  const found = await getClip(c.env, c.req.param('clipId'));
+  if (!found) return c.json({ error: 'not_found', requestId: c.get('requestId') }, 404);
+  return new Response(found.object.body, {
+    headers: { 'Content-Type': 'audio/wav', 'Content-Length': String(found.sizeBytes), ETag: `"${found.sha256}"`, 'Cache-Control': 'private, max-age=0' },
+  });
 });
 
 app.notFound((c) => c.json({ error: 'not_found', requestId: c.get('requestId') }, 404));
