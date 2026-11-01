@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Siri-Tiri structured log v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "timestamp",
+    "level",
+    "component",
+    "eventName",
+    "message"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "level": {
+      "enum": [
+        "DEBUG",
+        "INFO",
+        "WARN",
+        "ERROR"
+      ]
+    },
+    "component": {
+      "enum": [
+        "pwa",
+        "device",
+        "local",
+        "worker",
+        "cloud-inference"
+      ]
+    },
+    "eventName": {
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    },
+    "correlationId": {
+      "type": "string"
+    },
+    "eventId": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "attributes": {
+      "type": "object"
+    }
+  }
+}
