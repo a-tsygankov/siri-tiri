@@ -449,3 +449,13 @@ The responsive, interactive implementation is [companion-app-design.html](compan
 ### PWA shell implementation
 
 The companion design now has a Web App Manifest, a service worker that caches the app shell and Tiri avatar, and an offline fallback page. Event labels remain browser-local. The PWA does not yet sync with the Pi, receive detections, or store audio clips. Install behavior requires serving the `docs/` directory over HTTPS (or localhost); opening the HTML directly from disk will not enable service workers.
+
+
+## Round-screen clipping correction (November 2026)
+
+An iPhone review of the interactive mockups exposed two problems: a flex-based circle stretched vertically, and a fixed-SVG version placed the bottom row of labels outside the circular boundary. The follow-up mockup also underestimated edge clipping. **Use the corrected [round-screen geometry findings](ROUND_UI_SAFE_AREA.md) and [revised 466 × 466 SVG](assets/round-safe-area-v3.svg) as the reference for future device layouts.** Validate full control bounds against an inset circle, not just component center positions. Use fixed-size text viewports for optional running descriptions; never scroll primary action labels or mic state.
+
+
+## Refreshed cross-device interactive mockup (v4)
+
+[Open the combined round-device and phone companion mockup](connected-ui-v4.html). This single HTML prototype uses a native 466 × 466 SVG viewport with geometry-constrained overlay controls, and a mobile-first Today / Events / Review / Trends / Settings companion. Both surfaces share simulated event labels and microphone state. The circular screen no longer relies on flex-driven aspect ratio sizing; all labels and actions are kept within an inset circle. The phone is a conceptual PWA UI, not connected to actual hardware. The older [round prototype](ui-prototype.html) and [companion prototype](companion-app-design.html) remain available for comparison.

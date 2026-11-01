@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 466 466" width="466" height="466" role="img" aria-label="Siri-Tiri round screen event review with safe two-column buttons">
+<defs><clipPath id="circle"><circle cx="233" cy="233" r="231"/></clipPath></defs>
+<g clip-path="url(#circle)"><rect width="466" height="466" fill="#0c1626"/><circle cx="233" cy="233" r="229" fill="none" stroke="#46566a" stroke-width="3"/>
+<g font-family="Arial, sans-serif" text-anchor="middle">
+<text x="233" y="66" fill="#72e2bf" font-size="19" letter-spacing="1.4">NEW DETECTION</text>
+<text x="233" y="112" fill="#fff" font-size="30" font-weight="600">Meow detected</text>
+<path d="M90 164 Q100 129 110 164 T130 164 T150 164 T170 164 T190 164 T210 164 T230 164 T250 164 T270 164 T290 164 T310 164 T330 164 T350 164 T370 164" fill="none" stroke="#f0aa83" stroke-width="5" stroke-linecap="round"/>
+<text x="233" y="209" fill="#a5b4c8" font-size="17">10:34 PM · 2.4 sec</text>
+<text x="233" y="245" fill="#cbd5e1" font-size="16">Possible cat vocalization</text>
+<text x="233" y="279" fill="#f1f5f9" font-size="18">What was happening?</text>
+<rect x="104" y="292" width="123" height="48" rx="18" fill="#1c2c3e" stroke="#63758a" stroke-width="1.5"/>
+<rect x="239" y="292" width="123" height="48" rx="18" fill="#1c2c3e" stroke="#63758a" stroke-width="1.5"/>
+<rect x="104" y="347" width="123" height="48" rx="18" fill="#1c2c3e" stroke="#63758a" stroke-width="1.5"/>
+<rect x="239" y="347" width="123" height="48" rx="18" fill="#1c2c3e" stroke="#63758a" stroke-width="1.5"/>
+<g fill="#f5f7fb" font-size="18"><text x="165.5" y="322">Food</text><text x="300.5" y="322">Attention</text><text x="165.5" y="377">Play</text><text x="300.5" y="377">Unsure</text></g>
+<text x="233" y="424" fill="#cbd5e1" font-size="17">Later</text></g></g></svg>
