@@ -173,6 +173,12 @@ export default async function openDb(name = 'siri-tiri') {
     return row && row.blob ? row.blob : null;
   }
 
+  // Every clips row without its blob, as a Map by clipId.
+  async function listClipRows() {
+    const rows = await run(db, ['clips'], 'readonly', ({ clips }) => req(clips.getAll()));
+    return new Map(rows.map((r) => [r.clipId, clipMeta(r)]));
+  }
+
   // The clips row without its blob: {clipId, eventId, size, sha256, origin, uploadedAt, remoteAvailable, hasBlob}.
   async function getClipRow(clipId) {
     const row = await run(db, ['clips'], 'readonly', ({ clips }) => req(clips.get(clipId)));
@@ -423,7 +429,7 @@ export default async function openDb(name = 'siri-tiri') {
   function close() { db.close(); }
 
   return {
-    getMeta, setMeta, saveCapture, listEvents, listTombstones, getEvent, getClip, getClipRow,
+    getMeta, setMeta, saveCapture, listEvents, listTombstones, getEvent, getClip, getClipRow, listClipRows,
     listReviews, allReviews, saveReview, getDraft, putDraft, deleteClip,
     markExported, usage, clearAll, close,
     getSyncState, setSyncState, listOutbox, updateOutbox, putOutbox, deleteOutbox, markAccepted,

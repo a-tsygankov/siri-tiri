@@ -119,6 +119,13 @@ button.danger:disabled { color: #6d7878; border-color: #d3d8d6; background: #ece
 .badge.todo { background: var(--todo-bg); color: var(--todo-text); border-color: #ecd3a8; }
 .badge.done { background: var(--done-bg); color: var(--done-text); border-color: #b9dccb; }
 .badge.gone { background: #eceeec; color: #3e4a4a; border-color: #cfd6d4; }
+.badge.queued { background: #e8eef8; color: #27416b; border-color: #bfd0ea; }
+.badge.synced { background: var(--done-bg); color: var(--done-text); border-color: #b9dccb; }
+.badge.failed { background: #f8e3e1; color: #7a2520; border-color: #ebbcb8; }
+.badge.local { background: #eceeec; color: #3e4a4a; border-color: #cfd6d4; }
+.sync-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.sync-row button { flex: 1 1 120px; }
+.failed-list { margin: 8px 0; padding-left: 18px; font-size: 14px; color: var(--muted); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
 .chip { border-radius: 22px; }

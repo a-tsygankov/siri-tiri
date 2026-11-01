@@ -182,14 +182,10 @@ async function runOnce(db, api, { now = () => Date.now(), onProgress = () => {},
     // 4. Download missing remote clips, newest first, bounded per run.
     if (canDownload()) {
       for (const stub of await db.listClipStubs(DOWNLOADS_PER_RUN)) {
-        let res;
-        try { res = await api.getClip(stub.clipId); } catch { throw new Stop('offline', 'network'); }
-        if (res.status === 401) await unauthorized();
-        if (!res.ok) { stats.failed++; continue; }
-        const hash = await sha256Hex(res.bytes);
-        if (stub.sha256 && hash !== stub.sha256.toLowerCase()) { stats.failed++; continue; }
-        await db.storeRemoteClip(stub.clipId, new Blob([res.bytes], { type: 'audio/wav' }));
-        stats.downloaded++;
+        const r = await downloadClip(db, api, stub);
+        if (r === 'unauthorized') await unauthorized();
+        if (r === 'network') throw new Stop('offline', 'network');
+        if (r === 'ok') stats.downloaded++; else stats.failed++;
         onProgress({ phase: 'download', ...stats });
       }
     }
@@ -201,6 +197,19 @@ async function runOnce(db, api, { now = () => Date.now(), onProgress = () => {},
     await db.setSyncState({ lastError: e.error || e.outcome }).catch(() => {});
     return { ...stats, outcome: e.outcome };
   }
+}
+
+// Fetches one remote clip, verifies its SHA-256 against the clip row and stores it.
+// Resolves 'ok' | 'network' | 'unauthorized' | 'missing' | 'mismatch'.
+export async function downloadClip(db, api, stub) {
+  let res;
+  try { res = await api.getClip(stub.clipId); } catch { return 'network'; }
+  if (res.status === 401) return 'unauthorized';
+  if (!res.ok) return 'missing';
+  const hash = await sha256Hex(res.bytes);
+  if (stub.sha256 && hash !== stub.sha256.toLowerCase()) return 'mismatch';
+  await db.storeRemoteClip(stub.clipId, new Blob([res.bytes], { type: 'audio/wav' }));
+  return 'ok';
 }
 
 async function docOf(db, kind, messageId) {
