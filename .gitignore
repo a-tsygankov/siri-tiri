@@ -1,4 +1,5 @@
 .venv/
+/CatMeows/
 local-service/models/
 local-service/data/
 local-service/audio/
