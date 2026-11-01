@@ -61,7 +61,7 @@ Model provenance, checksum and alternative checkpoint findings are in [MODEL_RES
 
 ### CatMeows download
 
-The authors provide [CatMeows v1.0.2](https://zenodo.org/records/4008297), DOI [10.5281/zenodo.4008297](https://doi.org/10.5281/zenodo.4008297), for scientific research and non-commercial purposes with acknowledgment/citation. Start here while Tiri recordings are unavailable; narrow experimental context labels do not establish intent or transfer accuracy to Tiri.
+The authors provide [CatMeows v1.0.2](https://zenodo.org/records/4008297), DOI [10.5281/zenodo.4008297](https://doi.org/10.5281/zenodo.4008297), for scientific research and non-commercial purposes with acknowledgment/citation. Use it as a provisional pre-Tiri baseline, not only a pipeline smoke test: score the 440 positive meow clips with frozen YAMNet and optionally train a separate experimental classifier for the three elicitation contexts. It cannot establish household false-positive rates or transfer accuracy to Tiri; its context labels do not establish intent.
 
 Acknowledgment: Luca Andrea Ludovico, Stavros Ntalampiras, Giorgio Presti, Simona Cannas, Monica Battini and Silvana Mattiello. Dataset reference: *CatMeows: A Publicly-Available Dataset of Cat Vocalizations*, MMM 2021, LNCS 12573, pp. 230–243. The Zenodo record also supplies the related 2019 study and full citation details.
 
@@ -111,7 +111,7 @@ Split assignments use the first eight hex digits of SHA-256(catId), modulo 5: bu
 
 Reports use a fresh `CatMeows/reports/run-<UTC>-<id>/` directory with `report.json` and `clips.csv`. Both contain clip identifiers, source and inference preprocessing provenance, checksums and model versions; JSON also includes the manifest snapshot hash, recording-condition/split summaries, failures, class scores, runtime versions and latency statistics. Derived path/checksum/length failures are explicit. The command exits nonzero after writing a report if any selected clip failed.
 
-Diagnostic thresholds 0.1/0.3/0.5 apply only to **maximum window Meow score**, with detection rate calculated over successfully scored positive clips. Failure/selection coverage is reported separately. Precision and false-positive rate are null, and `selectedThreshold` stays null. Extras are excluded from labeled evaluation. These are not household performance or Tiri confidence estimates.
+Diagnostic thresholds 0.1/0.3/0.5 apply only to **maximum window Meow score**: 345/440 (78.41%), 270/440 (61.36%) and 216/440 (49.09%) positive clips met them in the recorded run. Detection rate is calculated over successfully scored positive clips; failure/selection coverage is reported separately. Precision and false-positive rate are null, and `selectedThreshold` stays null. Extras are excluded from labeled evaluation. These provisional baseline measurements are not household performance or Tiri confidence estimates; see [CATMEOWS_BASELINE.md](CATMEOWS_BASELINE.md).
 
 Latency uses monotonic timers, separates model loading, file/hash reading and inference, and uses nearest-rank p50/p95. The first actual predictor invocation is reported separately even when earlier files are invalid, and excluded from `afterFirst`. The measurements are one sequential CPU pass with two interpreter threads, not a repeated hardware benchmark. Native memory use is not measured. See [CATMEOWS_BASELINE.md](CATMEOWS_BASELINE.md) for the initial run.
 
