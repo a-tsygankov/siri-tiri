@@ -35,7 +35,9 @@ Settings offers Export new, Export unreviewed and Export all. Export produces on
 - Bundle fields: `exportVersion` (1), `appVersion`, `protocolVersion`, `installId`, `exportedAt`, `events` (capture envelopes and tombstones), `reviews` (every revision, ordered by revision), `clips` (manifest: `clipId`, `eventId`, `filename`, `sha256`, `sizeBytes`, `sampleRate`, `durationMs`).
 - Chunking: at most 20 WAVs per share; the bundle rides in the first chunk. Every chunk, the first included, waits for a "Share export" / "Share part N of M" tap so each share runs inside a fresh tap (iOS needs user activation for each share). A share rejected with `NotAllowedError` asks for another tap.
 - If the browser will not share the `application/json` bundle, it is retried as `siri-tiri-export-<stamp>.json.txt` (`text/plain`) before falling back to downloads.
-- Deleted events, and events whose clip already left in an earlier export, are exported as records only (capture envelope, tombstone, review history); no WAV and no manifest entry. Later revisions or a tombstone for an already-exported event therefore leave through Export new as records only.
+- Export all always includes audio: every selected event that still has a clip gets its WAV and manifest entry, even if it was exported before. It is the full backup, and the way to recover after a wrong "Yes" on the download prompt.
+- Export new and Export unreviewed carry records only (capture envelope, tombstone, review history; no WAV and no manifest entry) for clips that already left the phone. Later revisions or a tombstone for an already-exported event therefore leave through Export new as records only.
+- Deleted events are exported as records only in every mode.
 - After a share completes, every included event is marked exported. A download cannot be observed, so after a download the app asks "Did all N files download?" and marks the events exported only on Yes; No leaves them unexported. A cancelled or rejected share leaves them unexported.
 
 ## Limits

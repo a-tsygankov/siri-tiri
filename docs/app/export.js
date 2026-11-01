@@ -20,13 +20,16 @@ export function selectEvents(rows, reviewsByEvent, mode, tombstones = []) {
   });
 }
 
-// Per-row decision: a deleted event, or one whose clip already left in an earlier export,
-// goes out as records only (capture, tombstone, reviews; no WAV, no manifest entry).
-export function isRecordsOnly(row, deletedIds = new Set()) {
-  return row.recordsOnly === true || row.deleted === true || deletedIds.has(row.envelope.eventId) || !!row.exportedAt;
+// Per-row decision: a deleted (tombstoned) event goes out as records only (capture, tombstone,
+// reviews; no WAV, no manifest entry) in every mode. In 'new' and 'unreviewed' an event whose
+// clip already left in an earlier export is records only too; 'all' is the full backup and
+// recovery path, so it always carries the WAV of every event that still has a clip.
+export function isRecordsOnly(row, deletedIds = new Set(), mode) {
+  if (row.recordsOnly === true || row.deleted === true || deletedIds.has(row.envelope.eventId)) return true;
+  return mode !== 'all' && !!row.exportedAt;
 }
 
-export function buildBundle({ installId, events, tombstones = [], reviewsByEvent, now }) {
+export function buildBundle({ installId, events, tombstones = [], reviewsByEvent, now, mode }) {
   const ids = new Set(events.map((e) => e.envelope.eventId));
   const deleted = new Set(tombstones.map((t) => t.eventId));
   const envelopes = [
@@ -38,7 +41,7 @@ export function buildBundle({ installId, events, tombstones = [], reviewsByEvent
     const list = [...(reviewsByEvent.get(id) || [])].sort((a, b) => a.revision - b.revision);
     reviews.push(...list);
   }
-  const clips = events.filter((ev) => !isRecordsOnly(ev, deleted)).map(({ envelope: e }) => ({
+  const clips = events.filter((ev) => !isRecordsOnly(ev, deleted, mode)).map(({ envelope: e }) => ({
     clipId: e.payload.clipId,
     eventId: e.eventId,
     filename: `${e.eventId}.wav`,

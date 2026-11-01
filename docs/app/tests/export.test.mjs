@@ -99,6 +99,26 @@ test('buildBundle: re-exported event goes out records only (envelope + reviews, 
   assert.deepEqual(bundle.clips.map((m) => m.eventId), [fresh.envelope.eventId]);
 });
 
+test("mode-aware records-only: 'all' re-exports the WAV of an already-exported live event; 'new' does not", () => {
+  const exp = '2026-11-01T10:00:00.000Z';
+  const live = row(exp), fresh = row(), gone = row(exp);
+  const tG = buildTombstone({ installId: 'inst', eventId: gone.envelope.eventId, clipId: 'k', supersedesMessageId: gone.envelope.messageId, uuid, now: at('2026-11-01T09:00:00.000Z') });
+  const r1 = review(live.envelope.eventId, null, at('2026-11-01T11:00:00.000Z'));
+  const rv = new Map([[live.envelope.eventId, [r1]]]);
+  assert.equal(isRecordsOnly(live, new Set(), 'all'), false);
+  assert.equal(isRecordsOnly(live, new Set(), 'new'), true);
+  assert.equal(isRecordsOnly(live, new Set(), 'unreviewed'), true);
+  assert.equal(isRecordsOnly(gone, new Set([gone.envelope.eventId]), 'all'), true);
+  assert.equal(isRecordsOnly({ ...gone, deleted: true }, new Set(), 'all'), true);
+  const all = buildBundle({ installId: 'inst', events: [live, fresh, gone], tombstones: [tG], reviewsByEvent: rv, now, mode: 'all' });
+  assert.deepEqual(all.clips.map((m) => m.eventId), [live.envelope.eventId, fresh.envelope.eventId]);
+  const sel = selectEvents([live, fresh, gone], rv, 'new', [tG]);
+  assert.deepEqual(sel, [live, fresh]);
+  const nw = buildBundle({ installId: 'inst', events: sel, tombstones: [tG], reviewsByEvent: rv, now, mode: 'new' });
+  assert.deepEqual(nw.clips.map((m) => m.eventId), [fresh.envelope.eventId]);
+  assert.ok(nw.events.includes(live.envelope) && nw.reviews.includes(r1), 'new carries records of the exported event');
+});
+
 test('selectEvents does not mutate input', () => {
   const rows = [row(), row('x')];
   const copy = JSON.stringify(rows);

@@ -66,8 +66,9 @@ export function appendReview(db, { eventId, previous, fields }) {
 }
 
 // Single export entry point: select → bundle → share/download → only then markExported.
-// Deleted events, and events whose clip already left in an earlier export, go out as records
-// only (capture, tombstone, reviews; no WAV, no manifest entry).
+// Deleted events go out as records only (capture, tombstone, reviews; no WAV, no manifest entry).
+// In 'new' and 'unreviewed' so do events whose clip already left in an earlier export; 'all'
+// always carries the WAV of every event that still has a clip (the backup/recovery path).
 // A download cannot be observed, so a 'downloaded' result is marked exported only when
 // `confirmDownloaded(n)` resolves true; otherwise it resolves 'unconfirmed' and marks nothing.
 // Resolves 'shared' | 'downloaded' | 'unconfirmed'.
@@ -79,7 +80,7 @@ export async function runExport(db, mode, { beforeChunk, onCount, confirmDownloa
   const included = [];
   const entries = [];
   for (const ev of selectEvents(rows, reviews, mode, tombstones)) {
-    if (isRecordsOnly(ev, deleted)) { included.push({ ...ev, recordsOnly: true }); continue; }
+    if (isRecordsOnly(ev, deleted, mode)) { included.push({ ...ev, recordsOnly: true }); continue; }
     const blob = await db.getClip(ev.envelope.payload.clipId);
     if (!blob) continue;
     included.push(ev);
@@ -87,7 +88,7 @@ export async function runExport(db, mode, { beforeChunk, onCount, confirmDownloa
   }
   if (!included.length) throw new Error('nothing_to_export');
   onCount?.(entries.length, included.length - entries.length);
-  const bundle = buildBundle({ installId: meta.installId, events: included, tombstones, reviewsByEvent: reviews, now });
+  const bundle = buildBundle({ installId: meta.installId, events: included, tombstones, reviewsByEvent: reviews, now, mode });
   entries.unshift({ name: bundleFilename(() => bundle.exportedAt), data: JSON.stringify(bundle, null, 2) });
   const { outcome, downloaded } = await shareFiles(entries, download ? { beforeChunk, download } : { beforeChunk });
   if (outcome === 'downloaded' && !(confirmDownloaded && await confirmDownloaded(downloaded))) return 'unconfirmed';
@@ -482,7 +483,7 @@ async function renderSettings() {
     ${st === 'blocked' ? '<p class="banner warn">Storage full. Export or delete clips to record.</p>' : ''}
     </section>
     <section class="card"><h2>Export</h2>
-      <p class="hint">Opens the share sheet, or downloads the files. Nothing is uploaded. Export new also includes reviews changed since the last export. Deleted clips, and clips already exported, go out as records only (no audio).</p>
+      <p class="hint">Opens the share sheet, or downloads the files. Nothing is uploaded. Export new also includes reviews changed since the last export. Export all always includes audio; Export new and Export unreviewed carry records only for clips that already left the phone. Deleted clips are always records only.</p>
       <div class="stack">
         <button class="primary" data-action="export" data-mode="new">Export new</button>
         <button data-action="export" data-mode="unreviewed">Export unreviewed</button>

@@ -626,6 +626,27 @@ await fcheck('Export new carries a later review of an exported event, records on
   fassert(after > before, 'exportedAt not advanced');
 });
 
+await fcheck("Export all re-sends the WAV of an already-exported live event; Export unreviewed does not", async () => {
+  fassert(typeof (await fdb.getEvent(env.eventId)).exportedAt === 'string', 'precondition: env exported');
+  let files = [];
+  const restore = stubShare(async (d) => { files.push(...d.files); });
+  try {
+    await runExport(fdb, 'all');
+    const bundle = JSON.parse(await files[0].text());
+    fassert(bundle.clips.some((c) => c.eventId === env.eventId), 'all: manifest entry missing');
+    fassert(files.some((f) => f.name === env.eventId + '.wav'), 'all: wav missing');
+    fassert(files.length === 1 + bundle.clips.length, 'all: file count ' + files.length);
+    const latest = (await fdb.listReviews(env.eventId)).at(-1);
+    await appendReview(fdb, { eventId: env.eventId, previous: latest, fields: { deleted: true } });
+    files = [];
+    await runExport(fdb, 'unreviewed');
+    const b2 = JSON.parse(await files[0].text());
+    fassert(b2.events.some((e) => e.messageId === env.messageId), 'unreviewed: env not selected');
+    fassert(!b2.clips.some((c) => c.eventId === env.eventId), 'unreviewed: manifest entry present');
+    fassert(!files.some((f) => f.name === env.eventId + '.wav'), 'unreviewed: wav re-sent');
+  } finally { restore(); }
+});
+
 await fcheck('appendReview from a stale previous rejects with revision_conflict', async () => {
   const list = await fdb.listReviews(env.eventId);
   let msg = null;
