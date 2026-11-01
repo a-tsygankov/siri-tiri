@@ -1,0 +1,108 @@
+openapi: 3.1.0
+info:
+  title: Siri-Tiri Local Inference API
+  version: 1.0.0
+  description: Host-neutral LAN API for the Windows prototype and later Raspberry Pi service.
+servers:
+  - url: http://siri-tiri.local
+paths:
+  /v1/health:
+    get:
+      operationId: getHealth
+      summary: Check service readiness
+      responses:
+        '200':
+          description: Service is running and ready to accept analysis requests.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /v1/version:
+    get:
+      operationId: getVersion
+      summary: Read service and compatibility versions
+      responses:
+        '200':
+          description: Runtime and protocol versions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Version'
+  /v1/classify:
+    post:
+      operationId: classifyAudio
+      summary: Analyze one short WAV clip with YAMNet and optional personal classifier
+      description: The client retains its event until it receives and durably records a response. Repeating the same eventId must be safe.
+      parameters:
+        - in: query
+          name: eventId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: header
+          name: X-Correlation-ID
+          required: false
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          audio/wav:
+            schema:
+              type: string
+              format: binary
+      responses:
+        '200':
+          description: Analysis result; the client can persist it and acknowledge the queued clip.
+          content:
+            application/json:
+              schema:
+                $ref: './analysis-v1.schema.json'
+        '400':
+          description: Unsupported audio format, sample rate, or duration.
+        '409':
+          description: eventId was reused for different audio content.
+        '413':
+          description: Clip exceeds the configured size limit.
+        '503':
+          description: Model is loading or service is temporarily unavailable; retry with backoff.
+components:
+  schemas:
+    Health:
+      type: object
+      required: [status, ready]
+      properties:
+        status:
+          type: string
+          enum: [ok, starting, degraded]
+        ready:
+          type: boolean
+        checkedAt:
+          type: string
+          format: date-time
+    Version:
+      type: object
+      required: [serviceVersion, protocolVersion, minimumProtocolVersion, model]
+      properties:
+        serviceVersion:
+          type: string
+        build:
+          type: string
+        protocolVersion:
+          type: integer
+        minimumProtocolVersion:
+          type: integer
+        model:
+          type: object
+          required: [name, version, preprocessingVersion]
+          properties:
+            name:
+              type: string
+            version:
+              type: string
+            preprocessingVersion:
+              type: string
+            personalClassifierVersion:
+              type: string
