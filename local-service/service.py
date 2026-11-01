@@ -11,7 +11,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 import jobs
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
+INSTANCE_ID = os.environ.get('SIRI_TIRI_INSTANCE_ID', str(uuid.uuid4()))
 DB_PATH = Path(os.environ.get("SIRI_TIRI_DB", Path(__file__).parent / "data" / "siri-tiri.sqlite3"))
 LOCK = threading.RLock()
 TYPES = {"capture", "review", "analysis", "heartbeat", "update_status"}
@@ -159,7 +160,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urlparse(self.path)
         if path.path == "/health":
-            return self.respond(200, {"status": "ok", "component": "local", "version": VERSION})
+            return self.respond(200, {"status": "ok", "component": "local", "version": VERSION, 'instanceId': INSTANCE_ID})
         if path.path == "/version":
             return self.respond(200, {"version": VERSION, "protocol": 1, "sqliteSchema": jobs.SCHEMA_VERSION})
         if path.path == '/v1/jobs':
@@ -214,6 +215,13 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    port = int(os.environ.get('SIRI_TIRI_PORT', '8765'))
+    if not 1 <= port <= 65535:
+        raise ValueError('SIRI_TIRI_PORT must be 1..65535')
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     init_db()
-    print("Siri-Tiri local prototype http://127.0.0.1:8765 (localhost only)")
-    ThreadingHTTPServer(("127.0.0.1", 8765), Handler).serve_forever()
+    print("Siri-Tiri local prototype http://127.0.0.1:%d (localhost only)" % port, flush=True)
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()

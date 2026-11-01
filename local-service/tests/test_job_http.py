@@ -77,7 +77,7 @@ class JobHttpTests(unittest.TestCase):
         self.assertNotIn('event', listing[0])
         self.assertEqual(self.send('GET', '/events')[1]['items'], [event])
         self.assertEqual(self.send('GET', '/health')[1]['status'], 'ok')
-        self.assertEqual(self.send('GET', '/version')[1], dict(version='0.2.0', protocol=1, sqliteSchema=2))
+        self.assertEqual(self.send('GET', '/version')[1], dict(version='0.3.0', protocol=1, sqliteSchema=2))
 
     def test_http_rejects_invalid_missing_and_conflicting_requests(self):
         self.capture()

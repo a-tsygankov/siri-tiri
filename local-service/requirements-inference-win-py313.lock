@@ -1,0 +1,10 @@
+# Windows x64 CPython 3.13. Complete resolved inference environment; hashes from pip install report.
+ai-edge-litert==2.3.0 --hash=sha256:c61e7bfe1938f94f2de7062e580b95f141157220af46c59c65fac8dd72d426b0
+numpy==2.2.6 --hash=sha256:b0544343a702fa80c95ad5d3d608ea3599dd54d4632df855e4c8d24eb6ecfa1c
+backports.strenum==1.2.8 --hash=sha256:fc297cb26971f7d5e15a478a06a78575197f81daea47975771b1aae996dcccf4
+flatbuffers==25.12.19 --hash=sha256:7634f50c427838bb021c2d66a3d1168e9d199b0607e6329399f04846d42e20b4
+ml_dtypes==0.6.0 --hash=sha256:fb87f46b4f7ad7b5d3ad8f4b452b024bd4229d44c8ff934798c1fe656210387a
+protobuf==7.36.2 --hash=sha256:a300819d441e078a5608c0d3c709796bb548136058fda017ae51d425b44fd353
+tqdm==4.70.1 --hash=sha256:c293e525e6fef9c20e8728fd4612df02a0aa31bb5fe91ecd93e123b1b7bffa73
+typing_extensions==4.16.0 --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8
+colorama==0.4.6 --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
