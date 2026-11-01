@@ -199,6 +199,7 @@ See [Offline Sync, Updates and Observability Architecture](ARCHITECTURE_SYNC_UPD
 
 - [x] Versioned v1 event and log envelope JSON Schemas in `contracts/`.
 - [x] Minimal Windows/Pi-compatible localhost prototype with SQLite WAL persistence, event deduplication and log ingestion in `local-service/`.
+- [x] Deterministic SQLite connection cleanup after successful and failed operations; six local Windows Python 3.13 tests cover persistence, validation, logs, commit/rollback and connection closure.
 - [x] Windows GitHub Actions unit-test workflow (execution results not yet verified).
 - [ ] Full JSON Schema validation and compatibility negotiation.
 - [ ] YAMNet inference worker and durable processing claims/leases.

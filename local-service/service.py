@@ -4,6 +4,7 @@ import os
 import sqlite3
 import threading
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -17,13 +18,19 @@ LEVELS = {"DEBUG", "INFO", "WARN", "ERROR"}
 COMPONENTS = {"pwa", "device", "local", "worker", "cloud-inference"}
 
 
+@contextmanager
 def connect():
+    """Commit or roll back each operation, then always release its connection."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(DB_PATH, timeout=15)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA journal_mode=WAL")
-    db.execute("PRAGMA busy_timeout=15000")
-    return db
+    try:
+        db.row_factory = sqlite3.Row
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("PRAGMA busy_timeout=15000")
+        with db:
+            yield db
+    finally:
+        db.close()
 
 
 def init_db():
