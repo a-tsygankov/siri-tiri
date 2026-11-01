@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://siri-tiri.example/schemas/event-v1.schema.json",
+  "title": "Siri-Tiri captured sound event",
+  "description": "Transport envelope for a candidate sound event. Sync state is local and is not part of this payload.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "messageId", "eventId", "origin", "createdAt", "payload"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "messageId": { "type": "string", "format": "uuid", "description": "Stable across retries; deduplication key." },
+    "eventId": { "type": "string", "format": "uuid", "description": "Stable identity shared by event, review, audio and analysis records." },
+    "origin": { "enum": ["esp32", "pwa", "local-service", "import"] },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "correlationId": { "type": "string", "format": "uuid" },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capturedAt", "durationMs", "detector"],
+      "properties": {
+        "capturedAt": { "type": "string", "format": "date-time" },
+        "durationMs": { "type": "integer", "minimum": 1, "maximum": 30000 },
+        "detector": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "version": { "type": "string", "minLength": 1 },
+            "candidateScore": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "audio": {
+          "type": "object",
+          "description": "Reference and technical metadata only; audio bytes travel via a separate upload path.",
+          "additionalProperties": false,
+          "required": ["storage", "durationMs", "sampleRateHz", "channels", "encoding"],
+          "properties": {
+            "storage": { "enum": ["device", "phone", "local-service", "cloud"] },
+            "objectKey": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+            "byteLength": { "type": "integer", "minimum": 0 },
+            "durationMs": { "type": "integer", "minimum": 1 },
+            "sampleRateHz": { "type": "integer", "minimum": 1 },
+            "channels": { "type": "integer", "minimum": 1, "maximum": 8 },
+            "encoding": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    }
+  }
+}
