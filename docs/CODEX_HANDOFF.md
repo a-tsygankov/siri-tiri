@@ -60,6 +60,8 @@ First review the unreviewed calibration clips and record positive/negative/uncer
 
 The next implementation increment can add a local review/playback UI or reviewed household-recording import with group/provenance safeguards. No Tiri recordings are available, and native-memory, Linux/Pi and physical hardware verification remain future work. Keep the live detector inactive until a separate integration decision.
 
+**Phone app and next task:** a local-only phone PWA now exists in `docs/app/` (see its README). It exports a JSON bundle plus WAVs recorded at the phone's native rate (44.1/48 kHz). It is verified on desktop only; run the manual iPhone checklist before relying on it. The next implementation task is a local-service bundle importer with versioned 44.1/48 kHz to 16 kHz resampling (so `manage.py analyze` can run on phone clips), then Worker + D1 ingest and PWA outbox delivery. `docs/app/app.js` (about 740 lines) should be split into review, recording and settings modules when next touched.
+
 Follow-up tasks: Tiri/background recordings and thresholds; authenticated LAN API; Cloudflare Worker + D1/R2 sync; PWA IndexedDB outbox and update checks; ESP32 OTA; centralized diagnostics.
 
 ## Working modes
