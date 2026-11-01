@@ -138,6 +138,26 @@ button.danger:disabled { color: #6d7878; border-color: #d3d8d6; background: #ece
 .flag { font-weight: 600; color: var(--todo-text); background: var(--todo-bg); border-radius: 12px; padding: 8px 12px; }
 audio { width: 100%; margin: 4px 0 12px; }
 
+.row { display: flex; gap: 8px; }
+.row button { flex: 1; }
+.trim-actions { margin: 0 0 12px; }
+.trim label { display: flex; justify-content: space-between; font-weight: 600; margin: 10px 0 2px; }
+.trim output { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 400; }
+.trim input[type="range"] {
+  width: 100%;
+  min-height: 44px;
+  margin: 0 0 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  accent-color: var(--primary);
+  touch-action: pan-y;
+}
+.trim input[type="range"]::-webkit-slider-thumb { width: 28px; height: 28px; }
+.trim input[type="range"]::-moz-range-thumb { width: 28px; height: 28px; }
+.trim .row { margin-top: 8px; flex-wrap: wrap; }
+.trim .row button { flex: 1 1 120px; }
+
 .section { border: 1px solid #dce3df; border-radius: 15px; margin: 12px 0; padding: 12px; background: #fff; }
 fieldset.section { min-width: 0; }
 .section legend { font-weight: 700; padding: 0 4px; }

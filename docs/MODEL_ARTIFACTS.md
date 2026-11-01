@@ -53,3 +53,8 @@ Sources:
 - [CatMeows dataset paper (University of Milan repository)](https://air.unimi.it/handle/2434/911765)
 - [TensorFlow YAMNet model README](https://github.com/tensorflow/models/tree/master/research/audioset/yamnet)
 - [TensorFlow transfer learning with YAMNet](https://www.tensorflow.org/tutorials/audio/transfer_learning_audio)
+
+
+## Deferred implementation plan
+
+The post-base-system hosting, data collection, feature extraction, training, evaluation, and rollout sequence is in [YAMNet embedding personal-model implementation plan](YAMNET_EMBEDDING_IMPLEMENTATION_PLAN.md).

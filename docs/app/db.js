@@ -2,6 +2,8 @@
 // events.exportedAt/acceptedAt and clips.uploadedAt/blob (remote clip download).
 // Uses only the `indexedDB` and `crypto` globals.
 
+import { currentCapture, originalCapture } from './records.js';
+
 const DB_VERSION = 2;
 const STORES = ['events', 'clips', 'reviews', 'drafts', 'outbox', 'meta', 'syncState', 'conflicts'];
 // Cleared by clearAll; meta (pairing) and syncState survive, with the cursor reset.
@@ -140,19 +142,45 @@ export default async function openDb(name = 'siri-tiri') {
     return run(db, ['events'], 'readonly', ({ events }) => req(events.getAll()));
   }
 
-  function toStored(row, deleted = false) {
-    return { envelope: row.envelope, exportedAt: row.exportedAt ?? null, acceptedAt: row.acceptedAt ?? null, deleted };
+  // One stored event from all of its message rows (captures, trims, restores, tombstones).
+  // `envelope` is the current live capture (the latest trim or restore, else the original),
+  // `original` the root capture, `envelopes` every live capture oldest first. Never a tombstone.
+  function toStored(rows) {
+    const live = rows.filter((r) => !isTombstone(r.envelope))
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
+    if (!live.length) return null;
+    const envelopes = live.map((r) => r.envelope);
+    const current = currentCapture(envelopes) || envelopes[envelopes.length - 1];
+    const original = originalCapture(envelopes) || envelopes[0];
+    const rowOf = (env) => live.find((r) => r.messageId === env.messageId);
+    return {
+      envelope: current,
+      original,
+      envelopes,
+      exportedAt: rowOf(current)?.exportedAt ?? null,
+      acceptedAt: rowOf(current)?.acceptedAt ?? null,
+      originalExportedAt: rowOf(original)?.exportedAt ?? null,
+      deleted: rows.some((r) => isTombstone(r.envelope)),
+    };
+  }
+
+  function groupByEvent(rows) {
+    const map = new Map();
+    for (const r of rows) {
+      if (!map.has(r.eventId)) map.set(r.eventId, []);
+      map.get(r.eventId).push(r);
+    }
+    return map;
   }
 
   // Deleted events are hidden unless includeDeleted; then they carry deleted: true
-  // and the original capture envelope (never the tombstone).
+  // and the last live capture envelope (never the tombstone). Newest recording first.
   async function listEvents({ includeDeleted = false } = {}) {
     const rows = await loadEventRows();
-    const dead = new Set(rows.filter((r) => isTombstone(r.envelope)).map((r) => r.eventId));
-    return rows
-      .filter((r) => !isTombstone(r.envelope) && (includeDeleted || !dead.has(r.eventId)))
-      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
-      .map((r) => toStored(r, dead.has(r.eventId)));
+    return [...groupByEvent(rows).values()]
+      .map(toStored)
+      .filter((ev) => ev && (includeDeleted || !ev.deleted))
+      .sort((a, b) => (a.original.createdAt < b.original.createdAt ? 1 : a.original.createdAt > b.original.createdAt ? -1 : 0));
   }
 
   async function listTombstones() {
@@ -163,9 +191,27 @@ export default async function openDb(name = 'siri-tiri') {
   async function getEvent(eventId) {
     const rows = await run(db, ['events'], 'readonly', ({ events }) =>
       req(events.index('eventId').getAll(eventId)));
-    const capture = rows.find((r) => !isTombstone(r.envelope));
-    if (!capture) return null;
-    return toStored(capture, rows.some((r) => isTombstone(r.envelope)));
+    return toStored(rows);
+  }
+
+  // Appends a trim (with its WAV) or a restore (wavBlob null) capture message for an existing
+  // event and removes the blobs of superseded trims in the same transaction. The original
+  // recording's blob is never among `removeClipIds`; only deleteClip removes it.
+  async function saveTrim(envelope, wavBlob, { removeClipIds = [] } = {}) {
+    await run(db, ['events', 'clips', 'outbox'], 'readwrite', (s) => {
+      s.events.put({
+        messageId: envelope.messageId, eventId: envelope.eventId,
+        createdAt: envelope.createdAt, exportedAt: null, acceptedAt: null, envelope,
+      });
+      if (wavBlob) {
+        s.clips.put({
+          clipId: envelope.payload.clipId, blob: wavBlob, size: wavBlob.size, eventId: envelope.eventId,
+          origin: 'local', sha256: envelope.payload.sha256, uploadedAt: null, remoteAvailable: false,
+        });
+      }
+      for (const id of removeClipIds) if (id !== envelope.payload.clipId) s.clips.delete(id);
+      s.outbox.put(outboxRow(envelope.messageId, 'event', envelope.createdAt));
+    }, STRICT);
   }
 
   async function getClip(clipId) {
@@ -228,10 +274,12 @@ export default async function openDb(name = 'siri-tiri') {
     });
   }
 
-  async function deleteClip({ tombstone, reviewTombstone = null }) {
+  // `clipIds`: every clip of the event (original and current trim); the tombstone's own
+  // clipId is always removed.
+  async function deleteClip({ tombstone, reviewTombstone = null, clipIds = [] }) {
     await run(db, ['clips', 'events', 'reviews', 'outbox'], 'readwrite', async (s) => {
       if (reviewTombstone) await assertExtendsLatest(s.reviews, reviewTombstone);
-      s.clips.delete(tombstone.payload.clipId);
+      for (const id of new Set([tombstone.payload.clipId, ...clipIds])) s.clips.delete(id);
       s.events.put({
         messageId: tombstone.messageId, eventId: tombstone.eventId,
         createdAt: tombstone.createdAt, exportedAt: null, acceptedAt: null, envelope: tombstone,
@@ -258,8 +306,10 @@ export default async function openDb(name = 'siri-tiri') {
 
   async function usage() {
     const rows = await run(db, ['clips'], 'readonly', ({ clips }) => req(clips.getAll()));
+    // Remote stubs without audio do not count; a trimmed event keeps two blobs but counts as one clip.
     const stored = rows.filter((r) => r.blob);
-    return { clips: stored.length, bytes: stored.reduce((n, r) => n + (r.size || 0), 0) };
+    const events = new Set(stored.map((r) => r.eventId || r.clipId));
+    return { clips: events.size, bytes: stored.reduce((n, r) => n + (r.size || 0), 0) };
   }
 
   // Clears every data store. The pairing (meta) survives and the sync cursor resets to 0 so the
@@ -429,7 +479,7 @@ export default async function openDb(name = 'siri-tiri') {
   function close() { db.close(); }
 
   return {
-    getMeta, setMeta, saveCapture, listEvents, listTombstones, getEvent, getClip, getClipRow, listClipRows,
+    getMeta, setMeta, saveCapture, saveTrim, listEvents, listTombstones, getEvent, getClip, getClipRow, listClipRows,
     listReviews, allReviews, saveReview, getDraft, putDraft, deleteClip,
     markExported, usage, clearAll, close,
     getSyncState, setSyncState, listOutbox, updateOutbox, putOutbox, deleteOutbox, markAccepted,

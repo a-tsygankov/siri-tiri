@@ -149,6 +149,57 @@ await check('usage counts', async () => {
   assert(u.clips === 1 && u.bytes === clipA.size, JSON.stringify(u));
 });
 
+await check('saveTrim: current clip is the trim, original kept, re-trim drops the old trimmed blob, restore and delete', async () => {
+  const { buildTrim, buildRestore } = records;
+  const longBytes = wav.encodeWav(new Int16Array(16000), 16000); // 1 s
+  const clipD = { blob: new Blob([longBytes], { type: 'audio/wav' }), size: longBytes.length };
+  const idD = uuid();
+  const envD = { ...capture(meta, idD, clipD.size) };
+  envD.payload = { ...envD.payload, durationMs: 1000 };
+  await db.saveCapture(envD, clipD.blob);
+  const trimOf = (supersedes, clipId) => buildTrim({ installId: meta.installId, original: envD, supersedesMessageId: supersedes,
+    clipId, sha256: 'b'.repeat(64), sizeBytes: 44 + 16000, durationMs: 500, clippedSamples: 0, startMs: 100, endMs: 600, uuid, now });
+  const t1 = trimOf(envD.messageId, uuid());
+  const t1Blob = new Blob([wav.encodeWav(new Int16Array(10), 16000)], { type: 'audio/wav' });
+  await db.saveTrim(t1, t1Blob, { removeClipIds: [] });
+  let ev = await db.getEvent(envD.eventId);
+  assert(ev.envelope.messageId === t1.messageId, 'current is the trim');
+  assert(ev.original.messageId === envD.messageId, 'original kept on the row');
+  assert(ev.envelopes.length === 2 && ev.envelopes[0].messageId === envD.messageId, 'envelopes in createdAt order');
+  assert(ev.deleted === false, 'not deleted');
+  assert((await db.getClip(idD)) !== null && (await db.getClip(t1.payload.clipId)) !== null, 'both blobs stored');
+  const listed = (await db.listEvents()).find((r) => r.envelope.eventId === envD.eventId);
+  assert(listed && listed.envelope.messageId === t1.messageId && listed.original.messageId === envD.messageId, 'listEvents shows the trim as current');
+  assert(listed.exportedAt === null && listed.originalExportedAt === null, 'exportedAt fields');
+  assert((await db.usage()).clips === 2, 'usage counts events with audio, not blobs: ' + JSON.stringify(await db.usage()));
+  // Re-trim: supersedes t1, removes the t1 blob.
+  const t2 = trimOf(t1.messageId, uuid());
+  await db.saveTrim(t2, t1Blob, { removeClipIds: [t1.payload.clipId] });
+  ev = await db.getEvent(envD.eventId);
+  assert(ev.envelope.messageId === t2.messageId, 'current is t2');
+  assert((await db.getClip(t1.payload.clipId)) === null, 't1 blob removed');
+  assert((await db.getClip(idD)) !== null, 'original blob kept');
+  // markExported marks every live message; the original export time is reported separately.
+  const when = now();
+  await db.markExported([envD.eventId], when);
+  ev = await db.getEvent(envD.eventId);
+  assert(ev.exportedAt === when && ev.originalExportedAt === when, 'exportedAt after export');
+  // Restore: no blob; current becomes a message with the original clipId.
+  const r = buildRestore({ installId: meta.installId, original: envD, supersedesMessageId: t2.messageId, uuid, now });
+  await db.saveTrim(r, null, { removeClipIds: [t2.payload.clipId] });
+  ev = await db.getEvent(envD.eventId);
+  assert(ev.envelope.messageId === r.messageId && ev.envelope.payload.clipId === idD, 'restored current');
+  assert(ev.exportedAt === null, 'restore is a new unexported message');
+  assert((await db.getClip(t2.payload.clipId)) === null, 't2 blob removed');
+  // Delete removes every blob of the event.
+  const tomb = buildTombstone({ installId: meta.installId, eventId: envD.eventId, clipId: idD, supersedesMessageId: r.messageId, uuid, now });
+  await db.deleteClip({ tombstone: tomb, reviewTombstone: null, clipIds: [idD] });
+  ev = await db.getEvent(envD.eventId);
+  assert(ev.deleted === true && ev.envelope.messageId === r.messageId, 'deleted event shows the last live capture');
+  assert((await db.getClip(idD)) === null, 'original blob removed on delete');
+  assert((await db.usage()).clips === 1, 'usage after delete');
+});
+
 await check('fault injection: saveCapture rejects and nothing persisted', async () => {
   const clipB = makeClip();
   const idB = uuid();
@@ -179,12 +230,13 @@ await check('deleteClip hides event, getClip null, tombstones listed', async () 
   assert((await db.listEvents()).length === 0, 'event still listed');
   assert((await db.getClip(clipIdA)) === null, 'clip still present');
   const ts = await db.listTombstones();
-  assert(ts.length === 1 && ts[0].messageId === tomb.messageId, 'tombstones');
+  // The saveTrim check above left one tombstone of its own.
+  assert(ts.length === 2 && ts.some((t) => t.messageId === tomb.messageId), 'tombstones');
   assert((await db.usage()).clips === 0, 'usage');
   const gone = await db.getEvent(envA.eventId);
   assert(gone && gone.deleted === true, 'getEvent returns deleted event');
   assert(gone.envelope.messageId === envA.messageId, 'getEvent returns original capture envelope');
-  const withDel = await db.listEvents({ includeDeleted: true });
+  const withDel = (await db.listEvents({ includeDeleted: true })).filter((r) => r.envelope.eventId === envA.eventId);
   assert(withDel.length === 1 && withDel[0].deleted === true && withDel[0].envelope.messageId === envA.messageId, 'includeDeleted');
   // null reviewTombstone variant
   const clipC = makeClip(); const idC = uuid(); const envC = capture(meta, idC, clipC.size);
@@ -193,7 +245,7 @@ await check('deleteClip hides event, getClip null, tombstones listed', async () 
     supersedesMessageId: envC.messageId, uuid, now });
   await db.deleteClip({ tombstone: tc, reviewTombstone: null });
   assert((await db.listEvents()).length === 0, 'second event listed');
-  assert((await db.listEvents({ includeDeleted: true })).length === 2, 'includeDeleted lists both');
+  assert((await db.listEvents({ includeDeleted: true })).length === 3, 'includeDeleted lists all three deleted events');
 });
 
 await check('clearAll keeps installId', async () => {
@@ -795,6 +847,33 @@ await fcheck("Export all re-sends the WAV of an already-exported live event; Exp
     fassert(!b2.clips.some((c) => c.eventId === env.eventId), 'unreviewed: manifest entry present');
     fassert(!files.some((f) => f.name === env.eventId + '.wav'), 'unreviewed: wav re-sent');
   } finally { restore(); }
+});
+
+await fcheck('Export of a trimmed event: both messages, original WAV and trimmed WAV with their manifest entries', async () => {
+  const longBytes = wav.encodeWav(new Int16Array(16000), 16000); // 1 s
+  const src = buildCapture({ installId: meta.installId, clipId: uuid(), sampleRate: 16000, durationMs: 1000,
+    sizeBytes: longBytes.length, sha256: 'a'.repeat(64), clippedSamples: 0, recordedAt: now(), interrupted: false, uuid, now });
+  await fdb.saveCapture(src, new Blob([longBytes], { type: 'audio/wav' }));
+  const { trimWav, sha256Hex } = wav;
+  const cut = trimWav(longBytes, 100, 600);
+  const trim = records.buildTrim({ installId: meta.installId, original: src, supersedesMessageId: src.messageId,
+    clipId: uuid(), sha256: await sha256Hex(cut.bytes), sizeBytes: cut.bytes.length, durationMs: cut.durationMs,
+    clippedSamples: cut.clippedSamples, startMs: 100, endMs: 600, uuid, now });
+  await fdb.saveTrim(trim, new Blob([cut.bytes], { type: 'audio/wav' }), { removeClipIds: [] });
+  let files = [];
+  const restore = stubShare(async (d) => { files.push(...d.files); });
+  try { await runExport(fdb, 'new'); } finally { restore(); }
+  const bundle = JSON.parse(await files[0].text());
+  const ids = bundle.events.filter((e) => e.eventId === src.eventId).map((e) => e.messageId);
+  fassert(ids.includes(src.messageId) && ids.includes(trim.messageId), 'both capture messages: ' + ids.length);
+  const names = files.map((f) => f.name);
+  fassert(names.includes(src.eventId + '.wav') && names.includes(src.eventId + '.trimmed.wav'), 'wav files ' + names.join());
+  const man = bundle.clips.filter((c) => c.eventId === src.eventId);
+  fassert(man.length === 2 && man.some((c) => c.clipId === trim.payload.clipId && c.filename === src.eventId + '.trimmed.wav'), 'manifest ' + JSON.stringify(man));
+  fassert(files.length === 1 + bundle.clips.length, 'file count ' + files.length);
+  const trimmedFile = files.find((f) => f.name === src.eventId + '.trimmed.wav');
+  fassert(trimmedFile.size === cut.bytes.length, 'trimmed file size');
+  fassert(typeof (await fdb.getEvent(src.eventId)).exportedAt === 'string', 'marked exported');
 });
 
 await fcheck('appendReview from a stale previous rejects with revision_conflict', async () => {

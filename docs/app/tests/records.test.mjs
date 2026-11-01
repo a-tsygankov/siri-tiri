@@ -185,3 +185,106 @@ test('syncBadge: a failed or conflict row is Sync failed', () => {
   assert.equal(syncBadge({ event: ev, outboxRows: [{ messageId: env.messageId, state: 'failed', lastError: 'clip_mismatch' }], clip: { uploadedAt: null }, paired: true, installId: 'pwa-abc' }), 'Sync failed');
   assert.equal(syncBadge({ event: ev, outboxRows: [{ messageId: 'r1', kind: 'review', state: 'conflict' }], clip: { uploadedAt: '2026-11-01T12:00:02Z' }, paired: true, installId: 'pwa-abc' }), 'Sync failed');
 });
+
+import { buildTrim, buildRestore, currentCapture, originalCapture, isTrimmed } from '../records.js';
+
+const trimArgs = (uuid, original, extra = {}) => ({
+  installId: 'pwa-abc', original, supersedesMessageId: original.messageId,
+  clipId: 'c2', sha256: 'cd'.repeat(32), sizeBytes: 48044, durationMs: 500, clippedSamples: 1,
+  startMs: 200, endMs: 700, uuid, now, ...extra,
+});
+
+test('buildTrim is an event.v1 capture with the same eventId that supersedes the source and names its cut', () => {
+  const uuid = seqUuid();
+  const cap = buildCapture(captureArgs(uuid));
+  const t = buildTrim(trimArgs(uuid, cap));
+  assert.deepEqual(checkSchema(t, eventSchema), []);
+  assert.equal(t.eventId, cap.eventId);
+  assert.notEqual(t.messageId, cap.messageId);
+  assert.equal(t.type, 'capture');
+  assert.equal(t.sourceId, 'pwa-abc');
+  assert.equal(t.createdAt, now());
+  const p = t.payload;
+  assert.equal(p.supersedesMessageId, cap.messageId);
+  assert.equal(p.clipId, 'c2');
+  assert.equal(p.sha256, 'cd'.repeat(32));
+  assert.equal(p.sizeBytes, 48044);
+  assert.equal(p.durationMs, 500);
+  assert.equal(p.clippedSamples, 1);
+  assert.equal(p.sampleRate, 48000);
+  assert.equal(p.interrupted, false);
+  assert.equal(p.encoding, 'pcm16-wav'); assert.equal(p.channels, 1);
+  assert.equal(p.captureVersion, 'pwa-pcm16-native-v1'); assert.equal(p.sourceKind, 'pwa-manual');
+  assert.deepEqual(p.trim, {
+    sourceMessageId: cap.messageId, sourceClipId: 'c1', sourceSha256: 'ab'.repeat(32),
+    sourceDurationMs: 1200, startMs: 200, endMs: 700, trimVersion: 'pwa-trim-v1',
+  });
+  assert.equal(isTrimmed(t), true);
+  assert.equal(isTrimmed(cap), false);
+});
+
+test('buildTrim shifts recordedAt by startMs so the trimmed audio keeps its real start time', () => {
+  const uuid = seqUuid();
+  const cap = buildCapture(captureArgs(uuid));
+  const t = buildTrim(trimArgs(uuid, cap));
+  assert.equal(t.payload.recordedAt, '2026-11-01T12:00:00.200Z');
+});
+
+test('buildTrim always cuts from the original capture even when superseding an earlier trim', () => {
+  const uuid = seqUuid();
+  const cap = buildCapture(captureArgs(uuid));
+  const t1 = buildTrim(trimArgs(uuid, cap));
+  const t2 = buildTrim(trimArgs(uuid, cap, { supersedesMessageId: t1.messageId, clipId: 'c3', startMs: 100, endMs: 1100, durationMs: 1000 }));
+  assert.equal(t2.payload.supersedesMessageId, t1.messageId);
+  assert.equal(t2.payload.trim.sourceClipId, 'c1');
+  assert.equal(t2.payload.trim.sourceMessageId, cap.messageId);
+  assert.equal(t2.payload.trim.sourceDurationMs, 1200);
+});
+
+test('buildTrim rejects a cut that is reversed, outside the source, shorter than LIMITS.minMs, or the whole clip', () => {
+  const uuid = seqUuid();
+  const cap = buildCapture(captureArgs(uuid));
+  assert.throws(() => buildTrim(trimArgs(uuid, cap, { startMs: 700, endMs: 200 })), /range/);
+  assert.throws(() => buildTrim(trimArgs(uuid, cap, { startMs: -1, endMs: 700 })), /range/);
+  assert.throws(() => buildTrim(trimArgs(uuid, cap, { startMs: 0, endMs: 1201 })), /range/);
+  assert.throws(() => buildTrim(trimArgs(uuid, cap, { startMs: 0, endMs: 299 })), /short/);
+  assert.throws(() => buildTrim(trimArgs(uuid, cap, { startMs: 0, endMs: 1200 })), /whole/);
+  assert.doesNotThrow(() => buildTrim(trimArgs(uuid, cap, { startMs: 0, endMs: 300 })));
+  assert.throws(() => buildTrim(trimArgs(uuid, buildTrim(trimArgs(uuid, cap)))), /original/);
+});
+
+test('buildRestore supersedes the trim and points back at the original clip', () => {
+  const uuid = seqUuid();
+  const cap = buildCapture(captureArgs(uuid));
+  const t = buildTrim(trimArgs(uuid, cap));
+  const r = buildRestore({ installId: 'pwa-abc', original: cap, supersedesMessageId: t.messageId, uuid, now });
+  assert.deepEqual(checkSchema(r, eventSchema), []);
+  assert.equal(r.eventId, cap.eventId);
+  assert.notEqual(r.messageId, cap.messageId); assert.notEqual(r.messageId, t.messageId);
+  assert.equal(r.payload.supersedesMessageId, t.messageId);
+  assert.equal(r.payload.restoresMessageId, cap.messageId);
+  assert.equal(r.payload.clipId, 'c1');
+  assert.equal(r.payload.sha256, 'ab'.repeat(32));
+  assert.equal(r.payload.durationMs, 1200);
+  assert.equal(r.payload.recordedAt, cap.payload.recordedAt);
+  assert.equal('trim' in r.payload, false);
+  assert.equal(isTrimmed(r), false);
+});
+
+test('currentCapture follows the supersedes chain and ignores tombstones; originalCapture is the root', () => {
+  const uuid = seqUuid();
+  const cap = buildCapture(captureArgs(uuid));
+  assert.equal(currentCapture([cap]), cap);
+  assert.equal(originalCapture([cap]), cap);
+  const t1 = buildTrim(trimArgs(uuid, cap));
+  assert.equal(currentCapture([t1, cap]), t1);
+  const t2 = buildTrim(trimArgs(uuid, cap, { supersedesMessageId: t1.messageId, clipId: 'c3' }));
+  assert.equal(currentCapture([cap, t2, t1]), t2);
+  assert.equal(originalCapture([t2, t1, cap]), cap);
+  const r = buildRestore({ installId: 'pwa-abc', original: cap, supersedesMessageId: t2.messageId, uuid, now });
+  assert.equal(currentCapture([cap, t1, t2, r]), r);
+  const tomb = buildTombstone({ installId: 'pwa-abc', eventId: cap.eventId, clipId: 'c1', supersedesMessageId: r.messageId, uuid, now });
+  assert.equal(currentCapture([cap, t1, t2, r, tomb]), r);
+  assert.equal(currentCapture([]), null);
+  assert.equal(originalCapture([tomb]), null);
+});
