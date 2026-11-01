@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://siri-tiri.example/schemas/review-v1.schema.json",
+  "title": "Siri-Tiri owner review",
+  "description": "Human-entered context and directly observed behavior. These are not machine-inferred emotions or translations.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "messageId", "reviewId", "eventId", "revision", "editedAt", "source", "context"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "messageId": { "type": "string", "format": "uuid" },
+    "reviewId": { "type": "string", "format": "uuid" },
+    "eventId": { "type": "string", "format": "uuid" },
+    "revision": { "type": "integer", "minimum": 1 },
+    "baseRevision": { "type": ["integer", "null"], "minimum": 1 },
+    "editedAt": { "type": "string", "format": "date-time" },
+    "source": { "enum": ["pwa", "esp32", "local-service"] },
+    "context": { "enum": ["food", "attention", "play", "door", "greeting", "resting", "handling", "other", "unsure"] },
+    "location": { "enum": ["kitchen", "living-room", "bedroom", "hallway", "outside", "other"] },
+    "observedBehavior": { "enum": ["approaching", "walking", "sitting", "looking-at-owner", "hiding", "eating", "other"] },
+    "outcome": { "enum": ["fed", "played", "door-opened", "settled", "repeated-vocalization", "no-action", "other"] },
+    "note": { "type": "string", "maxLength": 500 },
+    "deleted": { "type": "boolean", "default": false }
+  }
+}
