@@ -9,8 +9,9 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+import jobs
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 DB_PATH = Path(os.environ.get("SIRI_TIRI_DB", Path(__file__).parent / "data" / "siri-tiri.sqlite3"))
 LOCK = threading.RLock()
 TYPES = {"capture", "review", "analysis", "heartbeat", "update_status"}
@@ -27,6 +28,7 @@ def connect():
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA busy_timeout=15000")
+        db.execute("PRAGMA foreign_keys=ON")
         with db:
             yield db
     finally:
@@ -35,7 +37,12 @@ def connect():
 
 def init_db():
     with LOCK, connect() as db:
-        db.executescript("""
+        db.execute('BEGIN IMMEDIATE')
+        exists = db.execute("SELECT name FROM sqlite_master WHERE name='schema_migrations'").fetchone()
+        version = db.execute('SELECT coalesce(max(version),0) FROM schema_migrations').fetchone()[0] if exists else 0
+        if version > jobs.SCHEMA_VERSION:
+            raise RuntimeError('database schema is newer than this service supports')
+        baseline = """
         CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS messages (
           message_id TEXT PRIMARY KEY, event_id TEXT NOT NULL, source_id TEXT NOT NULL,
@@ -52,7 +59,13 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_logs_time ON logs(timestamp);
         INSERT OR IGNORE INTO schema_migrations(version,applied_at)
         VALUES (1, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
-        """)
+        """
+        if version < 1:
+            for statement in baseline.split(';'):
+                if statement.strip():
+                    db.execute(statement)
+        if version < 2:
+            jobs.migrate(db)
 
 
 def utc_now():
@@ -87,6 +100,8 @@ def validate_event(e):
         raise ValueError("unsupported event type")
     if "payload" in e and not isinstance(e["payload"], dict):
         raise ValueError("payload must be an object")
+    if 'correlationId' in e:
+        jobs.identifier(e['correlationId'])
     return e
 
 
@@ -110,6 +125,8 @@ def insert_event(event):
             existing = db.execute("SELECT body FROM messages WHERE message_id=?", (event["messageId"],)).fetchone()
             if json.loads(existing["body"]) != event:
                 raise ValueError("messageId collision with different content")
+        else:
+            jobs.enqueue(db, event)
         return cur.rowcount == 1
 
 
@@ -144,7 +161,13 @@ class Handler(BaseHTTPRequestHandler):
         if path.path == "/health":
             return self.respond(200, {"status": "ok", "component": "local", "version": VERSION})
         if path.path == "/version":
-            return self.respond(200, {"version": VERSION, "protocol": 1, "sqliteSchema": 1})
+            return self.respond(200, {"version": VERSION, "protocol": 1, "sqliteSchema": jobs.SCHEMA_VERSION})
+        if path.path == '/v1/jobs':
+            try:
+                limit = int(parse_qs(path.query).get('limit', ['100'])[0])
+                return self.respond(200, {'schemaVersion': 1, 'items': jobs.list_jobs(connect, limit)})
+            except ValueError:
+                return self.respond(400, {'error': 'limit must be 1..500'})
         if path.path in ("/events", "/logs"):
             try:
                 limit = max(1, min(500, int(parse_qs(path.query).get("limit", ["100"])[0])))
@@ -155,18 +178,34 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        if path not in ("/events", "/logs"):
+        parts = path.strip('/').split('/')
+        operation = None
+        if len(parts) == 4 and parts[:2] == ['v1', 'jobs']:
+            operation = {'heartbeat': jobs.heartbeat, 'ack': jobs.ack, 'fail': jobs.fail}.get(parts[3])
+        if path not in ("/events", "/logs", '/v1/jobs/claim') and operation is None:
             return self.respond(404, {"error": "not found"})
         try:
             length = int(self.headers.get("Content-Length", "0"))
             if not 0 < length <= 65536:
                 return self.respond(413, {"error": "body must be 1..65536 bytes"})
-            body = json.loads(self.rfile.read(length))
+            def reject_constant(value):
+                raise ValueError('nonfinite JSON value')
+            body = json.loads(self.rfile.read(length), parse_constant=reject_constant)
+            if path == '/v1/jobs/claim':
+                return self.respond(200, {'schemaVersion': 1, 'job': jobs.claim(connect, body)})
+            if operation is not None:
+                return self.respond(200, {'schemaVersion': 1, 'job': operation(connect, parts[2], body)})
             if path == "/events":
                 inserted = insert_event(body)
                 return self.respond(201 if inserted else 200, {"accepted": True, "duplicate": not inserted})
             insert_log(body)
             return self.respond(201, {"accepted": True})
+        except jobs.NotFound:
+            return self.respond(404, {'error': 'job not found'})
+        except jobs.Conflict as ex:
+            return self.respond(409, {'error': str(ex)})
+        except RecursionError:
+            return self.respond(400, {'error': 'JSON nesting too deep'})
         except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as ex:
             return self.respond(400, {"error": str(ex)})
 

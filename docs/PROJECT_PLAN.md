@@ -202,7 +202,8 @@ See [Offline Sync, Updates and Observability Architecture](ARCHITECTURE_SYNC_UPD
 - [x] Deterministic SQLite connection cleanup after successful and failed operations; six local Windows Python 3.13 tests cover persistence, validation, logs, commit/rollback and connection closure.
 - [x] Windows GitHub Actions unit-test workflow (execution results not yet verified).
 - [ ] Full JSON Schema validation and compatibility negotiation.
-- [ ] YAMNet inference worker and durable processing claims/leases.
+- [x] Local durable processing jobs: transactional capture enqueue/backfill, SQLite migration 2, atomic cross-process claim leases, heartbeat, idempotent result acknowledgment, bounded retries and crash recovery; localhost API v1, component 0.2.0.
+- [ ] YAMNet inference worker consuming the durable queue, with pinned model/preprocessing artifacts and recorded-clip validation.
 - [ ] Authenticated LAN and Cloudflare sync, audio R2, device/PWA outboxes.
 - [ ] Update managers, signed OTA and hosted diagnostics.
 
