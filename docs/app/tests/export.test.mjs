@@ -81,6 +81,6 @@ test('bundleFilename', () => {
   assert.equal(bundleFilename(() => '2026-11-01T12:34:56.000Z'), 'siri-tiri-export-20261101T123456Z.json');
 });
 
-test('shareFiles stub rejects', async () => {
-  await assert.rejects(shareFiles([]), /not implemented/);
+test('shareFiles rejects with no files', async () => {
+  await assert.rejects(shareFiles([]), /no_files/);
 });

@@ -115,17 +115,19 @@ export default async function openDb(name = 'siri-tiri') {
     return run(db, ['events'], 'readonly', ({ events }) => req(events.getAll()));
   }
 
-  function toStored(row) {
-    return { envelope: row.envelope, exportedAt: row.exportedAt ?? null };
+  function toStored(row, deleted = false) {
+    return { envelope: row.envelope, exportedAt: row.exportedAt ?? null, deleted };
   }
 
-  async function listEvents() {
+  // Deleted events are hidden unless includeDeleted; then they carry deleted: true
+  // and the original capture envelope (never the tombstone).
+  async function listEvents({ includeDeleted = false } = {}) {
     const rows = await loadEventRows();
     const dead = new Set(rows.filter((r) => isTombstone(r.envelope)).map((r) => r.eventId));
     return rows
-      .filter((r) => !isTombstone(r.envelope) && !dead.has(r.eventId))
+      .filter((r) => !isTombstone(r.envelope) && (includeDeleted || !dead.has(r.eventId)))
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
-      .map(toStored);
+      .map((r) => toStored(r, dead.has(r.eventId)));
   }
 
   async function listTombstones() {
@@ -136,9 +138,9 @@ export default async function openDb(name = 'siri-tiri') {
   async function getEvent(eventId) {
     const rows = await run(db, ['events'], 'readonly', ({ events }) =>
       req(events.index('eventId').getAll(eventId)));
-    if (rows.some((r) => isTombstone(r.envelope))) return null;
-    const row = rows[0];
-    return row ? toStored(row) : null;
+    const capture = rows.find((r) => !isTombstone(r.envelope));
+    if (!capture) return null;
+    return toStored(capture, rows.some((r) => isTombstone(r.envelope)));
   }
 
   async function getClip(clipId) {

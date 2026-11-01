@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#225c50">
+<meta name="description" content="Record short clips of Tiri and note what was happening. Everything stays on this phone.">
+<title>Siri-Tiri</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main id="app">
+  <section id="screen-today" aria-label="Today"></section>
+  <section id="screen-events" aria-label="Events" hidden></section>
+  <section id="screen-review" aria-label="Review" hidden></section>
+  <section id="screen-settings" aria-label="Settings" hidden></section>
+</main>
+<div role="status" aria-live="polite" id="live"></div>
+<nav aria-label="Main">
+  <button data-tab="today" data-action="go" data-to="#today">Today</button>
+  <button data-tab="events" data-action="go" data-to="#events">Events</button>
+  <button data-tab="settings" data-action="go" data-to="#settings">Settings</button>
+</nav>
+<dialog id="rec-sheet" class="sheet" aria-labelledby="rec-title">
+  <div id="rec-body"></div>
+  <p id="rec-status" role="status" aria-live="polite"></p>
+</dialog>
+<dialog id="confirm" aria-labelledby="confirm-text">
+  <form method="dialog">
+    <p id="confirm-text"></p>
+    <div class="stack">
+      <button value="cancel">Cancel</button>
+      <button value="ok" class="danger" id="confirm-ok">Delete</button>
+    </div>
+  </form>
+</dialog>
+<noscript><p>Siri-Tiri needs JavaScript to record and store clips on this phone.</p></noscript>
+<script type="module">
+import { init } from './app.js';
+init();
+</script>
+</body>
+</html>
