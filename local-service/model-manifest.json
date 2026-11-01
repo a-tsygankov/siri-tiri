@@ -6,5 +6,6 @@
   "sha256": "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf",
   "labelFile": "yamnet_label_list.txt",
   "labelCount": 521,
-  "source": "https://developers.google.com/edge/mediapipe/solutions/audio/audio_classifier"
+  "source": "https://developers.google.com/edge/mediapipe/solutions/audio/audio_classifier",
+  "classMapSha256": "8e1267a120c1932b7273c0d0e0c5529edbb9a35512b437b1c8982baa59047051"
 }

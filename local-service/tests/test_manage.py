@@ -40,6 +40,21 @@ class ManageTests(unittest.TestCase):
         finally:
             manage.stop_children([owned, unrelated])
 
+    def test_programmatic_review_score_preserves_arguments_on_interpreter_switch(self):
+        import review_store
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            store = review_store.ReviewStore(root)
+            row = review_store.inventory_record('raw/dataset/F_MAG01_EU_FN_FED01_106.wav', '1' * 64, {'MAG01': 'FED01'})
+            store.initialize([row])
+            interpreter = root / 'other-python.exe'
+            interpreter.write_bytes(b'placeholder')
+            argv = ['review-score', '--dataset-root', str(root)]
+            def launch(command, **kwargs):
+                return 0 if command[3:] == argv else 91
+            with patch('manage.PYTHON', interpreter), patch('manage.subprocess.call', side_effect=launch):
+                self.assertEqual(manage.main(argv), 0)
+
 
 if __name__ == '__main__':
     unittest.main()

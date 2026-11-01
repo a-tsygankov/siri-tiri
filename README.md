@@ -69,3 +69,5 @@ The downloaded originals are **8-kHz mono PCM16**. The live worker accepts 16 kH
 ```
 
 Derived files remain ignored under `CatMeows/derived/`; uniquely named reports go under `CatMeows/reports/`. A full local run scored 440/440 primary clips with no failures and preserved all 483 source WAV checksums. See the [baseline measurements and limits](local-service/CATMEOWS_BASELINE.md) and [batch command details](local-service/README.md#catmeows-preparation-and-batch-scoring). No operating threshold or household false-positive estimate is established by this positive-only dataset.
+
+For the next review step, run `py -3 local-service/manage.py review-init` and `review-export`. The [audible-meow review workflow](local-service/REVIEW_WORKFLOW.md) adds revisioned human labels, version-bound feature scoring, calibration diagnostics and explicit frozen-rule evaluation. All 43 supplementary clips start unreviewed; the initial real-data calibration remains blocked without reviewed negatives. These offline annotations are separate from owner-context reviews and do not activate a live detector.

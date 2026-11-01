@@ -46,9 +46,19 @@ The initial run scored 440/440 primary clips and verified all 483 original WAV h
 
 These positive-only diagnostics do not establish precision, household false-positive rate, a selected threshold, or accuracy on Tiri. Extras contain other cat vocalizations and uncut sequences; keep them unlabeled until reviewed. Source context remains recording metadata, separate from inference and owner observations. Batch tools do not access the service database or start the service.
 
-## Suggested next Codex task
+## Reviewed audible-meow labels and rules
 
-> Read AGENTS.md and the architecture/project/handoff documents. From updated main, add a reviewed positive/negative/uncertain annotation manifest and evaluation support for detector rules on local recordings, keeping cat/session grouping and provenance. CatMeows extras require review; do not silently assign them all negative labels. Preserve a calibration/evaluation separation and freeze a rule before reporting evaluation metrics. No Tiri recordings are available yet, so do not claim Tiri accuracy. Keep originals/private audio ignored, preserve the localhost service and tests, document actual results/limitations, and open a feature-branch PR.
+The [offline review workflow](../local-service/REVIEW_WORKFLOW.md) is implemented separately from the service/owner-review database. Target: an audible meow anywhere in a clip. Start with `py -3 local-service/manage.py review-init` and `review-export`; listen locally before using `review-label` with reviewer and expected revision. Primary positives are dataset references, not human reviews; all 43 extras start unlabeled. Human uncertain/negative labels override references without erasing history. Source changes and revision conflicts are rejected.
+
+`review-score` writes version-bound features for all catalog clips without labeling them. `detector-calibrate` uses calibration records only; `detector-freeze` explicitly chooses a score/threshold and retains immutable calibration evidence; `detector-evaluate` uses held-out labels and the frozen rule. Missing classes/features produce coverage reports with null metrics rather than unsupported claims. See the workflow for paths/options and nonzero insufficient-data status.
+
+Real verification: 483 clips scored, zero human reviews invented, 43 extras still unreviewed, all original checksums unchanged. The initial calibration has 277 reference positives and 23 unreviewed supplementary calibration clips; no reviewed negatives, so freezing is blocked. Synthetic fixtures verify the full rule lifecycle but are not performance evidence. The older descriptive baseline already exposed both groups, so this is not a pristine never-inspected evaluation dataset.
+
+## Next work and human input
+
+First review the unreviewed calibration clips and record positive/negative/uncertain labels; do not manufacture negatives or assume every extra is negative. After adequate calibration coverage, inspect candidate diagnostics and explicitly choose/freeze a rule before evaluation. Keep held-out reviews independent of rule choice and report the prior baseline exposure.
+
+The next implementation increment can add a local review/playback UI or reviewed household-recording import with group/provenance safeguards. No Tiri recordings are available, and native-memory, Linux/Pi and physical hardware verification remain future work. Keep the live detector inactive until a separate integration decision.
 
 Follow-up tasks: Tiri/background recordings and thresholds; authenticated LAN API; Cloudflare Worker + D1/R2 sync; PWA IndexedDB outbox and update checks; ESP32 OTA; centralized diagnostics.
 

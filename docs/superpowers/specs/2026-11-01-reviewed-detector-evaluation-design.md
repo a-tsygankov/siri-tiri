@@ -1,6 +1,6 @@
 # Reviewed labels and frozen detector evaluation
 
-Status: proposed for approval after the user authorized merging PR #9 and working on the next handoff task. PR #9 was merged as 94d91281b1b1604cbb89ed1afa756273271b1440.
+Status: approved by the user on 2026-11-01 and implemented on the PR branch. PR #9 was merged as 94d91281b1b1604cbb89ed1afa756273271b1440. Delivery/CI status is recorded on PR #10.
 
 ## Goal and boundaries
 
