@@ -1,0 +1,7 @@
+.venv/
+local-service/models/
+local-service/data/
+local-service/audio/
+local-service/run/
+__pycache__/
+*.py[cod]

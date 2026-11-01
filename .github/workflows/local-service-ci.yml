@@ -1,9 +1,9 @@
 name: Local service tests
 on:
   push:
-    paths: ['local-service/**', 'contracts/**', '.github/workflows/local-service-ci.yml']
+    paths: ['local-service/**', 'scripts/**', 'contracts/**', '.github/workflows/local-service-ci.yml']
   pull_request:
-    paths: ['local-service/**', 'contracts/**', '.github/workflows/local-service-ci.yml']
+    paths: ['local-service/**', 'scripts/**', 'contracts/**', '.github/workflows/local-service-ci.yml']
 jobs:
   tests:
     runs-on: windows-latest
@@ -14,3 +14,14 @@ jobs:
           python-version: '3.12'
       - name: Unit tests
         run: python -m unittest discover -s local-service/tests -v
+  inference:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Pinned inference setup and real-model smoke
+        run: python local-service/manage.py setup
+      - name: Unit and integration tests in inference environment
+        run: python local-service/manage.py tests

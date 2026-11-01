@@ -203,7 +203,8 @@ See [Offline Sync, Updates and Observability Architecture](ARCHITECTURE_SYNC_UPD
 - [x] Windows GitHub Actions unit-test workflow (execution results not yet verified).
 - [ ] Full JSON Schema validation and compatibility negotiation.
 - [x] Local durable processing jobs: transactional capture enqueue/backfill, SQLite migration 2, atomic cross-process claim leases, heartbeat, idempotent result acknowledgment, bounded retries and crash recovery; localhost API v1, component 0.2.0.
-- [ ] YAMNet inference worker consuming the durable queue, with pinned model/preprocessing artifacts and recorded-clip validation.
+- [x] Optional Windows CPU YAMNet worker consuming the durable queue, pinned/verified TFLite model and runtime, versioned PCM16/16-kHz preprocessing, setup/run/test/status scripts, synthetic inference and isolated capture-to-result validation.
+- [ ] Tiri/background recorded-clip validation, thresholds and latency/memory benchmarks; broader audio formats/resampling and Raspberry Pi inference lock.
 - [ ] Authenticated LAN and Cloudflare sync, audio R2, device/PWA outboxes.
 - [ ] Update managers, signed OTA and hosted diagnostics.
 

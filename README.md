@@ -37,6 +37,8 @@ Planned lifecycle: independently versioned components and schemas, automatic PWA
 
 The [local service](local-service/README.md) is a Python 3.11+ localhost-only HTTP API backed by SQLite WAL, with durable event ingestion, idempotent message IDs and structured log storage. Run `py -3 local-service/service.py` on Windows 11 and open `http://127.0.0.1:8765/health`. [Windows CI tests](.github/workflows/local-service-ci.yml) cover persistence, deduplication, validation and logs. [Versioned contracts](contracts/) describe event/log envelopes.
 
-**Current limitations:** no YAMNet inference, audio capture, authenticated LAN access, Cloudflare integration, OTA or auto-update yet. Do not expose the prototype port beyond localhost.
+**Current limitations:** no audio capture, authenticated LAN access, Cloudflare integration, OTA or auto-update yet. Do not expose the prototype port beyond localhost. YAMNet supports explicitly supplied local WAV clips; accuracy on Tiri recordings remains unvalidated.
 
 Local service **0.2.0** adds a durable SQLite processing queue with atomic capture enqueue, worker claim leases, heartbeats, result acknowledgment, retry limits and crash recovery. See the [worker API and migration notes](local-service/README.md#durable-processing-jobs-020) before upgrading an existing database. The queue does not run inference automatically.
+
+Local service **0.3.0** adds an optional Windows CPU YAMNet worker and repeatable setup/run/test/status scripts. Start with `.\scripts\setup.ps1`, then `.\scripts\run.ps1` for API plus worker. See [setup and audio requirements](local-service/README.md#setup-and-run-the-local-stack-030) and [checkpoint research](local-service/MODEL_RESEARCH.md).

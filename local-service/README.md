@@ -1,6 +1,63 @@
 # Siri-Tiri local prototype service
 
-A **dependency-free Python 3.11+** Windows 11 / Raspberry Pi foundation for durable event ingestion and inspection. It is intentionally not yet the YAMNet inference worker. No Cloudflare or ESP32 integration yet.
+A **dependency-free Python 3.11+ API** for durable event ingestion and inspection, with an optional **Windows x64 Python 3.13 YAMNet worker**. No Cloudflare or ESP32 integration yet.
+
+## Setup and run the local stack (0.3.0)
+
+From the repository root on Windows 11:
+
+```powershell
+.\scripts\setup.ps1       # local venv, hash-locked packages, verified model, real-model smoke
+.\scripts\test.ps1        # unit + isolated HTTP/process tests
+.\scripts\run.ps1         # API + inference worker; Ctrl+C stops both
+# second terminal:
+.\scripts\status.ps1      # API health/version/instance; does not claim jobs
+```
+
+The equivalent Python commands work without activating a venv or changing PowerShell execution policy:
+
+```powershell
+py -3.13 local-service/manage.py setup
+py -3 local-service/manage.py tests
+py -3 local-service/manage.py run
+py -3 local-service/manage.py status
+```
+
+Scripts resolve default paths from their checkout, so they can also be invoked by absolute path from another directory. Setup is repeatable, does not initialize or migrate SQLite, and installs nothing system-wide. Its hash-locked inference environment currently targets Windows x64 CPython 3.13; it fails explicitly on other platforms/interpreters. The API and dependency-free tests retain Python 3.11+ compatibility. Raspberry Pi/Linux inference needs a separately tested package lock.
+
+Default locations are `.venv/`, `local-service/models/yamnet-1/yamnet.tflite`, `local-service/audio/`, and `local-service/data/siri-tiri.sqlite3`. They are ignored by Git. `SIRI_TIRI_DB` still works when running `service.py` directly; for managed commands, use explicit `--db` (the manager deliberately selects its checkout-local default). `--audio-root` and `--db` accept paths with spaces. Custom relative paths are resolved from the caller's directory.
+
+```powershell
+# Isolated database/audio and a different localhost port:
+py -3 local-service/manage.py run --port 8766 --db 'C:\Temp\tiri-test.sqlite3' --audio-root 'C:\Temp\test clips'
+# Separate foreground components:
+py -3 local-service/manage.py api
+py -3 local-service/manage.py worker
+py -3 local-service/manage.py worker --once
+# Classify a WAV without adding an event or touching the database:
+py -3 local-service/manage.py analyze 'C:\Temp\test clips\clip.wav'
+py -3 local-service/manage.py smoke
+```
+
+The combined runner checks port availability before database initialization, verifies the model/runtime before starting the API, identifies its own API instance, monitors both children, and stops only those children on Ctrl+C, startup failure or child failure. It never terminates another service occupying the port. It is a development supervisor, not a Windows service or automatic updater. Child termination may interrupt work; leases provide recovery on the next run.
+
+### Supplying audio
+
+Put a WAV inside the configured audio root, then POST a capture referencing its **relative** path:
+
+```powershell
+$capture = @{schemaVersion=1;messageId=[guid]::NewGuid().ToString();eventId=[guid]::NewGuid().ToString();sourceId='manual-wav';createdAt=[DateTime]::UtcNow.ToString('o');type='capture';payload=@{audioRef='clip.wav'}} | ConvertTo-Json -Depth 5
+Invoke-RestMethod http://127.0.0.1:8765/events -Method Post -ContentType 'application/json' -Body $capture
+Invoke-RestMethod http://127.0.0.1:8765/v1/jobs
+```
+
+Input support is deliberately explicit: uncompressed PCM16 WAV, mono/stereo, **16000 Hz**, 1 sample through **30 seconds**. Stereo is averaged and signed samples are divided by 32768. Other sample rates, encodings, excessive duration, missing/truncated files and unsupported references fail with stable error codes through the existing bounded retries. Absolute paths, URLs, traversal and resolved symlink escapes are rejected. On Windows, use `/` for relative subdirectories in `audioRef`. Audio is never uploaded or printed.
+
+YAMNet runs 15600-sample windows with 7680-sample hops, zero-padding only the final necessary window. Results contain mean/max Cat, Meow, Purr, Hiss and Caterwaul scores, five top general classes, duration, window count, model version/checksum and preprocessing version. This TFLite variant emits class scores, not embeddings. It does not infer intent. Aggregation is an unweighted mean over windows, including the padded tail; thresholds and real-world accuracy remain unvalidated.
+
+The worker loads and verifies the model before claiming jobs, renews 60-second leases every 10 seconds during inference, and retries the **same** result acknowledgment if its response is lost. Stale/expired ownership cannot complete a job. Captures without supported `audioRef` values also use bounded retries; inspect failed jobs rather than assuming every old capture has audio. Existing owner reviews remain independent.
+
+Model provenance, checksum and alternative checkpoint findings are in [MODEL_RESEARCH.md](MODEL_RESEARCH.md). The model is downloaded only during explicit setup; ordinary inference works offline. Setup needs internet for any missing packages/model; it is not an offline installer bundle. Unit tests do not download models or require ML dependencies. Real-model smoke uses synthetic silence and a tone, not evidence of accuracy on Tiri.
 
 On Windows PowerShell:
 
@@ -25,7 +82,7 @@ Invoke-RestMethod http://127.0.0.1:8765/events
 
 ## Durable processing jobs (0.2.0)
 
-Each accepted `capture` creates exactly one pending job in the same SQLite transaction as its immutable message. Repeated delivery does not requeue a completed job. Reviews and other event types do not create jobs. Inference results are stored on the job and never replace owner observations. No inference runs automatically yet.
+Each accepted `capture` creates exactly one pending job in the same SQLite transaction as its immutable message. Repeated delivery does not requeue a completed job. Reviews and other event types do not create jobs. Inference results are stored on the job and never replace owner observations. The optional worker processes supported local audio references; the API alone does not run inference.
 
 The service migrates SQLite to schema **2** on startup and backfills existing capture messages. Migration is transactional and repeatable, preserves events/logs, and rejects newer unsupported database versions. Backfilled captures may already have been processed outside this prototype: the ledger guarantees at-least-once work, not exactly-once external side effects.
 

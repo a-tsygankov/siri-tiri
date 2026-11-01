@@ -1,0 +1,10 @@
+{
+  "modelVersion": "yamnet-tflite-float32-1",
+  "url": "https://storage.googleapis.com/mediapipe-models/audio_classifier/yamnet/float32/1/yamnet.tflite",
+  "filename": "yamnet.tflite",
+  "size": 4126810,
+  "sha256": "4d8b4a53282dc83ef04e3e7dbc4fbc98082e34e44ed798e16c3a0cdd4c584faf",
+  "labelFile": "yamnet_label_list.txt",
+  "labelCount": 521,
+  "source": "https://developers.google.com/edge/mediapipe/solutions/audio/audio_classifier"
+}
