@@ -15,8 +15,12 @@ self.addEventListener("activate", event => {
   );
   self.clients.claim();
 });
+// The phone app under ./app/ has its own worker; never handle (or cache) its requests here,
+// including navigations that arrive before the app worker is installed.
+const APP_PATH = new URL("./app/", self.location).pathname;
 self.addEventListener("fetch", event => {
   const request = event.request;
+  if (new URL(request.url).pathname.startsWith(APP_PATH)) return;
   if (request.method !== "GET" || new URL(request.url).origin !== self.location.origin) return;
   if (request.mode === "navigate") {
     event.respondWith(fetch(request).then(response => {

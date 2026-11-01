@@ -13,10 +13,11 @@ function req(request) {
 
 // Run `fn(stores)` inside one transaction; resolve with fn's result once the tx completes.
 // If fn throws/rejects the transaction is aborted so nothing is persisted.
-function run(db, names, mode, fn) {
+// `options` (e.g. { durability: 'strict' }) is ignored by browsers that do not support it.
+function run(db, names, mode, fn, options) {
   return new Promise((resolve, reject) => {
     let tx;
-    try { tx = db.transaction(names, mode); } catch (e) { reject(e); return; }
+    try { tx = options ? db.transaction(names, mode, options) : db.transaction(names, mode); } catch (e) { reject(e); return; }
     const stores = {};
     for (const n of names) stores[n] = tx.objectStore(n);
     let result;
@@ -37,7 +38,8 @@ function upgrade(db) {
   db.createObjectStore('clips', { keyPath: 'clipId' });
   const reviews = db.createObjectStore('reviews', { keyPath: 'messageId' });
   reviews.createIndex('eventId', 'eventId');
-  reviews.createIndex('eventRevision', 'eventRevision');
+  // Unique: two revisions with the same number for one event can never both be stored.
+  reviews.createIndex('eventRevision', 'eventRevision', { unique: true });
   db.createObjectStore('drafts', { keyPath: 'eventId' });
   db.createObjectStore('outbox', { keyPath: 'messageId' });
   db.createObjectStore('meta', { keyPath: 'key' });
@@ -50,6 +52,18 @@ function stripReview(row) {
 
 function isTombstone(env) {
   return !!env.payload && env.payload.deleted === true;
+}
+
+// Capture, review and delete writes are flushed to disk before the transaction completes.
+const STRICT = { durability: 'strict' };
+
+// Inside a review-writing transaction: reject with Error('revision_conflict') unless `doc`
+// extends the latest stored revision for its event (another tab may have saved meanwhile).
+async function assertExtendsLatest(reviews, doc) {
+  const rows = await req(reviews.index('eventId').getAll(doc.eventId));
+  const latest = rows.reduce((n, r) => Math.max(n, r.revision), 0);
+  const base = doc.baseRevision ?? 0;
+  if (base !== latest || doc.revision !== latest + 1) throw new Error('revision_conflict');
 }
 
 function metaRows(m) {
@@ -108,7 +122,7 @@ export default async function openDb(name = 'siri-tiri') {
         messageId: envelope.messageId, kind: 'event', state: 'pending',
         attempts: 0, createdAt: envelope.createdAt,
       });
-    });
+    }, STRICT);
   }
 
   function loadEventRows() {
@@ -164,15 +178,18 @@ export default async function openDb(name = 'siri-tiri') {
     return map;
   }
 
+  // Rejects with Error('revision_conflict') (nothing written, draft kept) when `doc.baseRevision`
+  // is not the latest stored revision for the event.
   async function saveReview(doc) {
-    await run(db, ['reviews', 'outbox', 'drafts'], 'readwrite', (s) => {
+    await run(db, ['reviews', 'outbox', 'drafts'], 'readwrite', async (s) => {
+      await assertExtendsLatest(s.reviews, doc);
       s.reviews.put({ ...doc, eventRevision: [doc.eventId, doc.revision] });
       s.outbox.put({
         messageId: doc.messageId, kind: 'review', state: 'pending',
         attempts: 0, createdAt: doc.editedAt,
       });
       s.drafts.delete(doc.eventId);
-    });
+    }, STRICT);
   }
 
   async function getDraft(eventId) {
@@ -187,7 +204,8 @@ export default async function openDb(name = 'siri-tiri') {
   }
 
   async function deleteClip({ tombstone, reviewTombstone = null }) {
-    await run(db, ['clips', 'events', 'reviews', 'outbox'], 'readwrite', (s) => {
+    await run(db, ['clips', 'events', 'reviews', 'outbox'], 'readwrite', async (s) => {
+      if (reviewTombstone) await assertExtendsLatest(s.reviews, reviewTombstone);
       s.clips.delete(tombstone.payload.clipId);
       s.events.put({
         messageId: tombstone.messageId, eventId: tombstone.eventId,
@@ -204,7 +222,7 @@ export default async function openDb(name = 'siri-tiri') {
           attempts: 0, createdAt: reviewTombstone.editedAt,
         });
       }
-    });
+    }, STRICT);
   }
 
   async function markExported(eventIds, when) {

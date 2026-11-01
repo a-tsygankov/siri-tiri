@@ -32,13 +32,20 @@ export class Recorder {
     this.onVisibility = () => { if (document.hidden) this.stop({ interrupted: true }).catch(() => {}); };
   }
 
-  async start(stream) {
+  // Creates an AudioContext synchronously inside the user's tap (iOS requires it there).
+  static createContext() {
+    const Ctx = globalThis.AudioContext || globalThis.webkitAudioContext;
+    return new Ctx();
+  }
+
+  // `audioContext` should be created by the caller in the tap handler (Recorder.createContext());
+  // without it one is created here (harness path). The Recorder owns and closes it either way.
+  async start(stream, audioContext = null) {
     if (this.recording || this.stopPromise) throw new Error('already_started');
     this.stream = stream;
     try {
-      // Must be created inside the user gesture on iOS; native rate cannot be forced.
-      const Ctx = globalThis.AudioContext || globalThis.webkitAudioContext;
-      this.ctx = new Ctx();
+      // Native rate cannot be forced.
+      this.ctx = audioContext || Recorder.createContext();
       if (this.ctx.state === 'suspended') await this.ctx.resume();
       await this.ctx.audioWorklet.addModule(new URL('./recorder-worklet.js', import.meta.url));
       this.sampleRate = this.ctx.sampleRate;
@@ -88,6 +95,8 @@ export class Recorder {
   stop({ interrupted = false } = {}) {
     if (this.stopPromise) return this.stopPromise;
     if (!this.recording) return Promise.reject(new Error('not_recording'));
+    // Synchronously, before any await: no tick or auto-stop may fire during a manual stop.
+    this.clearTimers();
     this.recording = false;
     this.stopPromise = this.finish(interrupted);
     return this.stopPromise;
@@ -95,7 +104,10 @@ export class Recorder {
 
   async finish(interrupted) {
     try {
-      const samples = mergeFrames(this.frames);
+      // A late timer must never yield a clip over LIMITS.maxMs (downstream limits are strict).
+      const merged = mergeFrames(this.frames);
+      const max = Math.floor((this.sampleRate * LIMITS.maxMs) / 1000);
+      const samples = merged.length > max ? merged.subarray(0, max) : merged;
       this.frames = [];
       const durationMs = (samples.length / this.sampleRate) * 1000;
       if (durationMs < LIMITS.minMs) throw new Error('too_short');
@@ -116,11 +128,15 @@ export class Recorder {
     }
   }
 
+  clearTimers() {
+    for (const t of this.timers) { clearInterval(t); clearTimeout(t); }
+    this.timers = [];
+  }
+
   async teardown() {
     this.recording = false;
     document.removeEventListener('visibilitychange', this.onVisibility);
-    for (const t of this.timers) { clearInterval(t); clearTimeout(t); }
-    this.timers = [];
+    this.clearTimers();
     try { if (this.node) { this.node.port.onmessage = null; this.node.disconnect(); } } catch {}
     try { this.source?.disconnect(); this.sink?.disconnect(); } catch {}
     try { this.stream?.getTracks().forEach((t) => t.stop()); } catch {}

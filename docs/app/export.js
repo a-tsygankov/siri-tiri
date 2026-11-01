@@ -1,15 +1,29 @@
 import { APP_VERSION, PROTOCOL_VERSION } from './version.js';
 import { needsReview, LIMITS } from './records.js';
 
+// True when `a` is a later instant than `b` (ISO strings; unparsable values never count as later).
+const later = (a, b) => Date.parse(a) > Date.parse(b);
+
+// 'new' selects an event that was never exported, or whose reviews or tombstone changed after
+// its last export, so later revisions and deletions also leave the phone through Export new.
 // Deleted (tombstoned) events stay candidates; buildBundle exports them as records only.
-// `_tombstones` stays in the signature so callers keep passing it.
-export function selectEvents(rows, reviewsByEvent, mode, _tombstones = []) {
+export function selectEvents(rows, reviewsByEvent, mode, tombstones = []) {
   return rows.filter((row) => {
     const id = row.envelope.eventId;
-    if (mode === 'new') return !row.exportedAt;
+    if (mode === 'new') {
+      if (!row.exportedAt) return true;
+      if ((reviewsByEvent.get(id) || []).some((r) => later(r.editedAt, row.exportedAt))) return true;
+      return tombstones.some((t) => t.eventId === id && later(t.createdAt, row.exportedAt));
+    }
     if (mode === 'unreviewed') return needsReview(reviewsByEvent.get(id) || []);
     return true;
   });
+}
+
+// Per-row decision: a deleted event, or one whose clip already left in an earlier export,
+// goes out as records only (capture, tombstone, reviews; no WAV, no manifest entry).
+export function isRecordsOnly(row, deletedIds = new Set()) {
+  return row.recordsOnly === true || row.deleted === true || deletedIds.has(row.envelope.eventId) || !!row.exportedAt;
 }
 
 export function buildBundle({ installId, events, tombstones = [], reviewsByEvent, now }) {
@@ -24,8 +38,7 @@ export function buildBundle({ installId, events, tombstones = [], reviewsByEvent
     const list = [...(reviewsByEvent.get(id) || [])].sort((a, b) => a.revision - b.revision);
     reviews.push(...list);
   }
-  // Deleted events contribute records only: no manifest entry, no WAV.
-  const clips = events.filter((ev) => !ev.deleted && !deleted.has(ev.envelope.eventId)).map(({ envelope: e }) => ({
+  const clips = events.filter((ev) => !isRecordsOnly(ev, deleted)).map(({ envelope: e }) => ({
     clipId: e.payload.clipId,
     eventId: e.eventId,
     filename: `${e.eventId}.wav`,
@@ -57,31 +70,50 @@ export function chunkClips(manifest, size = LIMITS.exportChunk) {
   return out;
 }
 
-// Browser only; never touch `navigator`/`document` at module top level.
+const SHARE_ATTEMPTS = 3;
+
+// Browser only by default; never touch `navigator`/`document` at module top level.
 // `entries`: [{name, data}] with the bundle JSON first and one WAV per clip after it.
 // WAVs are chunked by LIMITS.exportChunk and the bundle rides in the first chunk.
-// `beforeChunk(index, total)` is awaited before every chunk after the first, so the
-// caller can wait for a fresh tap (iOS requires user activation for each share()).
-// Any throw (including a cancelled share) propagates; the caller must not mark exported.
-export async function shareFiles(entries, { beforeChunk = async () => {} } = {}) {
+// `beforeChunk(index, total, mode)` is awaited before EVERY chunk, the first included, so each
+// share()/download runs inside a fresh tap (iOS requires user activation for each share(), and
+// the activation of the Export tap is spent by the IndexedDB reads before it). A share rejected
+// with NotAllowedError (activation expired) asks for another tap and retries.
+// `mode` is 'share' or 'download'. Any other throw (including a cancelled share) propagates;
+// the caller must not mark exported. Resolves { outcome: 'shared'|'downloaded', downloaded }.
+// `nav` and `download` are injectable for tests.
+export async function shareFiles(entries, { beforeChunk = async () => {}, download = downloadFile, nav = globalThis.navigator } = {}) {
   if (!entries || !entries.length) throw new Error('no_files');
   const toFile = ({ name, data }) =>
     new File([data], name, { type: name.endsWith('.json') ? 'application/json' : 'audio/wav' });
   const [bundle, ...wavs] = entries.map(toFile);
   const chunks = wavs.length ? chunkClips(wavs, LIMITS.exportChunk) : [[]];
-  chunks[0].unshift(bundle);
-  let shared = true;
+  const canShare = (files) => { try { return !!nav?.canShare?.({ files }); } catch { return false; } };
+  let first = [bundle, ...chunks[0]];
+  if (!canShare(first)) {
+    // Chromium's share allowlist may exclude application/json; plain text usually passes.
+    const asText = new File([entries[0].data], `${bundle.name}.txt`, { type: 'text/plain' });
+    if (canShare([asText, ...chunks[0]])) first = [asText, ...chunks[0]];
+  }
+  chunks[0] = first;
+  let downloaded = 0;
   for (let i = 0; i < chunks.length; i++) {
-    if (i > 0) await beforeChunk(i, chunks.length);
     const files = chunks[i];
-    if (navigator.canShare?.({ files })) {
-      await navigator.share({ files });
-    } else {
-      shared = false;
-      for (const f of files) downloadFile(f);
+    const mode = canShare(files) ? 'share' : 'download';
+    await beforeChunk(i, chunks.length, mode);
+    if (mode === 'download') {
+      for (const f of files) download(f);
+      downloaded += files.length;
+      continue;
+    }
+    for (let attempt = 1; ; attempt++) {
+      try { await nav.share({ files }); break; } catch (e) {
+        if (!e || e.name !== 'NotAllowedError' || attempt >= SHARE_ATTEMPTS) throw e;
+        await beforeChunk(i, chunks.length, mode);
+      }
     }
   }
-  return shared ? 'shared' : 'downloaded';
+  return { outcome: downloaded ? 'downloaded' : 'shared', downloaded };
 }
 
 function downloadFile(file) {

@@ -3,7 +3,7 @@ import {
   CONTEXTS, LOCATIONS, BEHAVIORS, OUTCOMES, LIMITS,
   buildCapture, buildTombstone, buildReview, latestReview, needsReview, storageState,
 } from './records.js';
-import { selectEvents, buildBundle, bundleFilename, shareFiles } from './export.js';
+import { selectEvents, buildBundle, bundleFilename, shareFiles, isRecordsOnly } from './export.js';
 import openDb from './db.js';
 import { Recorder } from './recorder.js';
 
@@ -66,8 +66,12 @@ export function appendReview(db, { eventId, previous, fields }) {
 }
 
 // Single export entry point: select → bundle → share/download → only then markExported.
-// Deleted events go out as records only (capture, tombstone, reviews; no WAV, no manifest entry).
-export async function runExport(db, mode, { beforeChunk, onCount } = {}) {
+// Deleted events, and events whose clip already left in an earlier export, go out as records
+// only (capture, tombstone, reviews; no WAV, no manifest entry).
+// A download cannot be observed, so a 'downloaded' result is marked exported only when
+// `confirmDownloaded(n)` resolves true; otherwise it resolves 'unconfirmed' and marks nothing.
+// Resolves 'shared' | 'downloaded' | 'unconfirmed'.
+export async function runExport(db, mode, { beforeChunk, onCount, confirmDownloaded, download } = {}) {
   const [rows, reviews, tombstones, meta] = await Promise.all([
     db.listEvents({ includeDeleted: true }), db.allReviews(), db.listTombstones(), db.getMeta(),
   ]);
@@ -75,7 +79,7 @@ export async function runExport(db, mode, { beforeChunk, onCount } = {}) {
   const included = [];
   const entries = [];
   for (const ev of selectEvents(rows, reviews, mode, tombstones)) {
-    if (ev.deleted || deleted.has(ev.envelope.eventId)) { included.push(ev); continue; }
+    if (isRecordsOnly(ev, deleted)) { included.push({ ...ev, recordsOnly: true }); continue; }
     const blob = await db.getClip(ev.envelope.payload.clipId);
     if (!blob) continue;
     included.push(ev);
@@ -85,9 +89,10 @@ export async function runExport(db, mode, { beforeChunk, onCount } = {}) {
   onCount?.(entries.length, included.length - entries.length);
   const bundle = buildBundle({ installId: meta.installId, events: included, tombstones, reviewsByEvent: reviews, now });
   entries.unshift({ name: bundleFilename(() => bundle.exportedAt), data: JSON.stringify(bundle, null, 2) });
-  const result = await shareFiles(entries, { beforeChunk });
+  const { outcome, downloaded } = await shareFiles(entries, download ? { beforeChunk, download } : { beforeChunk });
+  if (outcome === 'downloaded' && !(confirmDownloaded && await confirmDownloaded(downloaded))) return 'unconfirmed';
   await db.markExported(included.map((e) => e.envelope.eventId), bundle.exportedAt);
-  return result;
+  return outcome;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +113,8 @@ const isStandalone = () => matchMedia('(display-mode: standalone)').matches || n
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const screen = (name) => $('#screen-' + name);
 const busy = () => !!(state.rec || state.pendingClip || state.starting);
+// The Update row also waits for an export or bulk delete holding the action lock.
+const updateBlocked = () => busy() || !!state.locked;
 
 let liveTimer = null;
 export function announce(msg) {
@@ -128,7 +135,7 @@ export function notifyUpdateReady(apply) {
 function updateRow() {
   if (!state.update) return '';
   return `<div class="banner"><p><strong>Update ready</strong></p>
-    <button data-action="apply-update" ${busy() ? 'disabled' : ''}>Reload to update</button></div>`;
+    <button data-action="apply-update" ${updateBlocked() ? 'disabled' : ''}>Reload to update</button></div>`;
 }
 
 function eventRow(row, reviews, label) {
@@ -147,10 +154,12 @@ function eventRow(row, reviews, label) {
   </article>`;
 }
 
-function confirmDialog(text, okLabel) {
+function confirmDialog(text, okLabel, { cancelLabel = 'Cancel', danger = true } = {}) {
   const d = $('#confirm');
   $('#confirm-text').textContent = text;
   $('#confirm-ok').textContent = okLabel;
+  $('#confirm-ok').className = danger ? 'danger' : 'primary';
+  d.querySelector('button[value="cancel"]').textContent = cancelLabel;
   d.returnValue = '';
   d.showModal();
   // Resolve on the synchronous submit (the button pressed); `close` only covers Esc.
@@ -358,7 +367,7 @@ async function saveReviewAction() {
   const previous = r.latest;
   let doc;
   try { doc = await appendReview(state.db, { eventId: r.eventId, previous, fields: reviewFields(r.fields) }); }
-  catch { announce('Could not save. Try again.'); return; }
+  catch (e) { if (!(await onReviewConflict(e, r.eventId))) announce('Could not save. Try again.'); return; }
   if (!doc || state.review !== r) return; // ignored double tap, or the owner left the screen
   r.latest = doc;
   setReviewStatus([doc]);
@@ -378,7 +387,12 @@ async function undoAction() {
   if (!u) return;
   let doc;
   try { doc = await appendReview(state.db, { eventId: u.eventId, previous: u.saved, fields: undoFields(u.previous, u.saved) }); }
-  catch { announce('Could not undo. Try again.'); return; }
+  catch (e) {
+    clearTimeout(state.undoTimer);
+    state.undo = null;
+    if (!(await onReviewConflict(e, u.eventId))) announce('Could not undo. Try again.');
+    return;
+  }
   if (!doc) return;
   clearTimeout(state.undoTimer);
   state.undo = null;
@@ -388,9 +402,25 @@ async function undoAction() {
   $('[data-action="save"]')?.focus();
 }
 
+// Another tab saved a revision first (db.js rejects with 'revision_conflict'): re-render the
+// Review screen from the store (the draft is kept) and ask the owner to check and save again.
+// Returns true when `e` was a conflict and has been handled.
+async function onReviewConflict(e, eventId) {
+  if (!e || e.message !== 'revision_conflict') return false;
+  if (state.review && state.review.eventId === eventId) {
+    leaveReview();
+    await renderReview(eventId);
+  }
+  announce('This review changed elsewhere. Check it and save again.');
+  return true;
+}
+
 async function deleteClipAction() {
   const r = state.review;
-  const ok = await confirmDialog('Delete the audio of this clip? Its record and review history stay on this phone.', 'Delete clip');
+  const text = r.latest && !r.latest.deleted
+    ? 'Delete the audio of this clip? The audio is removed from this phone and the review is marked deleted, so the recording returns to Needs review. Its record and review history stay on this phone.'
+    : 'Delete the audio of this clip? The audio is removed from this phone. Its record and review history stay on this phone.';
+  const ok = await confirmDialog(text, 'Delete clip');
   if (!ok || state.review !== r) return;
   const env = r.ev.envelope;
   let done;
@@ -406,7 +436,7 @@ async function deleteClipAction() {
       await state.db.deleteClip({ tombstone, reviewTombstone });
       return true;
     });
-  } catch { announce('Could not delete. Try again.'); return; }
+  } catch (e) { if (!(await onReviewConflict(e, r.eventId))) announce('Could not delete. Try again.'); return; }
   if (!done || state.review !== r) return;
   leaveReview();
   await renderReview(r.eventId);
@@ -452,7 +482,7 @@ async function renderSettings() {
     ${st === 'blocked' ? '<p class="banner warn">Storage full. Export or delete clips to record.</p>' : ''}
     </section>
     <section class="card"><h2>Export</h2>
-      <p class="hint">Opens the share sheet, or downloads the files. Nothing is uploaded. Deleted clips are exported as records only.</p>
+      <p class="hint">Opens the share sheet, or downloads the files. Nothing is uploaded. Export new also includes reviews changed since the last export. Deleted clips, and clips already exported, go out as records only (no audio).</p>
       <div class="stack">
         <button class="primary" data-action="export" data-mode="new">Export new</button>
         <button data-action="export" data-mode="unreviewed">Export unreviewed</button>
@@ -482,14 +512,16 @@ export function onRouteChange() {
 
 export const isLocked = () => !!state.locked;
 
-export function waitForTap(i, total) {
+// Shown before every chunk, the first included, so each share()/download runs in a fresh tap.
+export function waitForTap(i, total, mode = 'share') {
   const box = $('#export-next');
   return new Promise((resolve, rej) => {
     const reject = (e) => { pendingTap = null; if (box) box.innerHTML = ''; rej(e); };
     if (!box) { reject(new Error('cancelled')); return; }
     pendingTap = reject;
-    box.innerHTML = `<div class="banner"><p>Ready to share part ${i + 1} of ${total}.</p>
-      <button class="primary" id="share-next">${total > 1 ? `Share part ${i + 1} of ${total}` : 'Share export'}</button>
+    const verb = mode === 'download' ? 'Download' : 'Share';
+    box.innerHTML = `<div class="banner"><p>${total > 1 ? `Ready to ${verb.toLowerCase()} part ${i + 1} of ${total}.` : 'Export is ready.'}</p>
+      <button class="primary" id="share-next">${total > 1 ? `${verb} part ${i + 1} of ${total}` : `${verb} export`}</button>
       <button id="share-cancel">Cancel</button></div>`;
     $('#share-next').focus();
     $('#share-next').addEventListener('click', () => { pendingTap = null; box.innerHTML = ''; resolve(); }, { once: true });
@@ -497,17 +529,26 @@ export function waitForTap(i, total) {
   });
 }
 
-// The UI export path, under the action lock. Resolves 'shared' | 'downloaded' | 'failed' | 'busy'.
-export async function startExport(db, mode) {
+const confirmDownloaded = (n) =>
+  confirmDialog(`Did all ${n} ${n === 1 ? 'file' : 'files'} download?`, 'Yes', { cancelLabel: 'No', danger: false });
+
+// The UI export path, under the action lock.
+// Resolves 'shared' | 'downloaded' | 'unconfirmed' | 'failed' | 'busy'. `opts` (tests) may
+// override runExport options such as `download` or `confirmDownloaded`.
+export async function startExport(db, mode, opts = {}) {
   let outcome = 'busy';
   await exclusive(async () => {
     document.querySelectorAll('[data-action="export"]').forEach((b) => { b.disabled = true; });
     let clips = 0;
     let records = 0;
     try {
-      outcome = await runExport(db, mode, { beforeChunk: waitForTap, onCount: (c, r) => { clips = c; records = r; } });
-      const extra = records ? `, ${records} deleted as records only` : '';
-      announce(`${outcome === 'shared' ? 'Shared' : 'Downloaded'} ${clips} ${clips === 1 ? 'clip' : 'clips'}${extra}. Marked as exported.`);
+      outcome = await runExport(db, mode, {
+        beforeChunk: waitForTap, confirmDownloaded, ...opts, onCount: (c, r) => { clips = c; records = r; },
+      });
+      const extra = records ? `, ${records} as records only` : '';
+      const what = `${clips} ${clips === 1 ? 'clip' : 'clips'}${extra}`;
+      if (outcome === 'unconfirmed') announce(`Downloaded ${what}. Not marked as exported; export again once the files are saved.`);
+      else announce(`${outcome === 'shared' ? 'Shared' : 'Downloaded'} ${what}. Marked as exported.`);
     } catch (e) {
       outcome = 'failed';
       announce(e.message === 'nothing_to_export' ? 'Nothing to export.' : 'Export did not finish. Nothing was marked as exported.');
@@ -548,7 +589,8 @@ async function deleteAllAction() {
 // ---------------------------------------------------------------------------
 
 const SHEET_VIEWS = {
-  starting: () => '<h2 id="rec-title">Starting microphone…</h2>',
+  starting: () => `<h2 id="rec-title">Starting microphone…</h2>
+    <div class="stack"><button data-action="cancel-start">Cancel</button></div>`,
   recording: () => `<h2 id="rec-title">Recording</h2>
     <p class="elapsed" id="elapsed">0:00</p>
     ${reduceMotion() ? '<p class="level-text" id="level-text">Level: silent</p>'
@@ -596,21 +638,61 @@ function showTick(ms) {
   }
 }
 
-async function startRecording() {
+const START_SLOW_MS = 10000;
+
+// The tap handler. The AudioContext is created (and resumed) synchronously here, inside the
+// user's tap, because iOS only lets audio start from a gesture; nothing above it awaits.
+function startRecording() {
   if (busy()) return;
-  state.starting = true;
-  try { await beginRecording(); } finally { state.starting = false; }
+  let ctx = null;
+  try {
+    ctx = Recorder.createContext();
+    ctx.resume?.().catch(() => {});
+  } catch { /* Recorder.start reports the failure */ }
+  const attempt = { ctx, stream: null, cancelled: false, slowTimer: null };
+  state.starting = attempt;
+  return beginRecording(attempt).finally(() => {
+    clearTimeout(attempt.slowTimer);
+    if (state.starting === attempt) state.starting = null;
+  });
 }
 
-async function beginRecording() {
+// Releases whatever a start attempt holds (tracks, AudioContext). Safe to call twice.
+function releaseAttempt(attempt) {
+  try { attempt.stream?.getTracks().forEach((t) => t.stop()); } catch {}
+  try { if (attempt.ctx && attempt.ctx.state !== 'closed') attempt.ctx.close().catch(() => {}); } catch {}
+}
+
+// Cancel on the 'starting' view: the pending start is abandoned and cleans up when it returns.
+function cancelStart() {
+  const attempt = state.starting;
+  if (!attempt) return;
+  attempt.cancelled = true;
+  clearTimeout(attempt.slowTimer);
+  releaseAttempt(attempt);
+  state.starting = null;
+  closeSheet();
+  announce('Recording cancelled');
+}
+
+async function beginRecording(attempt) {
   const sheet = $('#rec-sheet');
   if (!sheet.open) sheet.showModal();
   sheetView('starting');
+  attempt.slowTimer = setTimeout(() => {
+    if (attempt.cancelled || state.starting !== attempt) return;
+    $('#rec-status').textContent = 'The microphone is taking a while. Cancel and try again.';
+    $('[data-action="cancel-start"]')?.focus();
+  }, START_SLOW_MS);
   let stream;
   try { stream = await Recorder.requestPermission(); } catch (e) {
+    releaseAttempt(attempt);
+    if (attempt.cancelled) return;
     sheetView(e && (e.name === 'NotAllowedError' || e.name === 'SecurityError') ? 'permission' : 'start-error');
     return;
   }
+  attempt.stream = stream;
+  if (attempt.cancelled) { releaseAttempt(attempt); return; }
   state.autoStopped = false;
   state.cueShown = false;
   const rec = new Recorder({
@@ -623,13 +705,16 @@ async function beginRecording() {
     },
   });
   state.recordedAt = now();
-  try { await rec.start(stream); } catch {
-    try { stream.getTracks().forEach((t) => t.stop()); } catch {}
-    sheetView('start-error');
+  try { await rec.start(stream, attempt.ctx || undefined); } catch {
+    releaseAttempt(attempt);
+    if (!attempt.cancelled) sheetView('start-error');
     return;
   }
-  // Set only once started, so a hide during start-up is handled by the Recorder itself.
+  if (attempt.cancelled) { await rec.teardown(); return; }
+  // Set only once started, so a hide during start-up is handled here or by the Recorder itself.
   state.rec = rec;
+  clearTimeout(attempt.slowTimer);
+  if (document.hidden) { await finishRecording(true); return; }
   sheetView('recording');
 }
 
@@ -678,6 +763,7 @@ async function saveClip() {
 const ACTIONS = {
   go: (b) => { location.hash = b.dataset.to; },
   record: startRecording,
+  'cancel-start': cancelStart,
   stop: () => finishRecording(false),
   'save-retry': saveClip,
   discard: () => { state.pendingClip = null; closeSheet(); announce('Recording discarded'); render(); },
@@ -696,7 +782,7 @@ const ACTIONS = {
   export: async (b) => { await startExport(state.db, b.dataset.mode); if (state.route === 'settings') await render(); },
   'delete-exported': () => exclusive(deleteExportedAction),
   'delete-all': () => exclusive(deleteAllAction),
-  'apply-update': () => { if (!busy() && state.update) state.update(); },
+  'apply-update': () => { if (!updateBlocked() && state.update) state.update(); },
 };
 
 // Export and bulk deletes must not interleave (e.g. Delete everything mid-way through a loop).
