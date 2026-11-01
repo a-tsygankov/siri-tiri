@@ -1,0 +1,22 @@
+name: PWA CI
+
+on:
+  push:
+    paths:
+      - 'docs/app/**'
+      - '.github/workflows/pwa-ci.yml'
+  pull_request:
+    paths:
+      - 'docs/app/**'
+      - '.github/workflows/pwa-ci.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run Node tests
+        run: node --test docs/app/tests/*.test.mjs

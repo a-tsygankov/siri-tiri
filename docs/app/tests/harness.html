@@ -1,0 +1,664 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>db.js harness</title>
+<pre id="out"></pre>
+<script type="module">
+const out = document.getElementById('out');
+const log = (s) => { out.textContent += s + '\n'; };
+const uuid = () => crypto.randomUUID();
+const now = () => new Date().toISOString();
+const dbName = 'siri-tiri-harness-' + Date.now();
+let failed = 0;
+
+async function check(name, fn) {
+  try { await fn(); log('PASS ' + name); }
+  catch (e) { failed++; log('FAIL ' + name + ' :: ' + (e && e.message || e)); }
+}
+function assert(c, m) { if (!c) throw new Error(m || 'assertion failed'); }
+
+let openDb, records, wav, db;
+try {
+  records = await import('../records.js');
+  wav = await import('../wav.js');
+  openDb = (await import('../db.js')).default;
+  db = await openDb(dbName);
+} catch (e) {
+  log('FAIL module load :: ' + e.message);
+  log('FAILED 1 (module missing)');
+  throw e;
+}
+
+const { buildCapture, buildTombstone, buildReview } = records;
+function makeClip() {
+  const wavBytes = wav.encodeWav(new Int16Array(800), 16000);
+  return { blob: new Blob([wavBytes], { type: 'audio/wav' }), size: wavBytes.length };
+}
+function capture(meta, clipId, size) {
+  return buildCapture({ installId: meta.installId, clipId, sampleRate: 16000, durationMs: 50,
+    sizeBytes: size, sha256: 'a'.repeat(64), clippedSamples: 0, recordedAt: now(),
+    interrupted: false, uuid, now });
+}
+
+const meta = await db.getMeta();
+const clipA = makeClip();
+const clipIdA = uuid();
+const envA = capture(meta, clipIdA, clipA.size);
+
+await check('meta created with pwa- prefix', async () => {
+  assert(/^pwa-/.test(meta.installId), meta.installId);
+  assert(meta.schemaVersion === 1, 'schemaVersion');
+  assert((await db.getMeta()).installId === meta.installId, 'stable');
+  await db.setMeta({ persistGranted: true });
+  assert((await db.getMeta()).persistGranted === true, 'setMeta');
+});
+
+await check('saveCapture then listEvents/getClip', async () => {
+  await db.saveCapture(envA, clipA.blob);
+  const evs = await db.listEvents();
+  assert(evs.length === 1, 'count ' + evs.length);
+  assert(evs[0].envelope.messageId === envA.messageId, 'envelope');
+  const b = await db.getClip(clipIdA);
+  assert(b instanceof Blob && b.size === clipA.size, 'blob size');
+  const one = await db.getEvent(envA.eventId);
+  assert(one && one.envelope.eventId === envA.eventId, 'getEvent');
+  assert(one.deleted === false, 'getEvent deleted flag false');
+  assert(evs[0].deleted === false, 'listEvents deleted flag false');
+});
+
+let r1, r2;
+await check('saveReview twice yields revisions 1 and 2, same reviewId', async () => {
+  const reviewId = uuid();
+  r1 = buildReview({ eventId: envA.eventId, reviewId, previous: null, fields: { context: 'food' }, uuid, now });
+  await db.saveReview(r1);
+  r2 = buildReview({ eventId: envA.eventId, reviewId, previous: r1, fields: { note: 'x' }, uuid, now });
+  await db.saveReview(r2);
+  const list = await db.listReviews(envA.eventId);
+  assert(list.length === 2, 'len ' + list.length);
+  assert(list.map(r => r.revision).join() === '1,2', 'revisions ' + list.map(r => r.revision));
+  assert(list[0].reviewId === list[1].reviewId, 'reviewId');
+  assert(!('eventRevision' in list[0]), 'eventRevision stripped');
+  const all = await db.allReviews();
+  assert(all.get(envA.eventId).length === 2 && !('eventRevision' in all.get(envA.eventId)[0]), 'allReviews');
+});
+
+await check('drafts put/get and removed after saveReview', async () => {
+  await db.putDraft(envA.eventId, { context: 'play' });
+  const d = await db.getDraft(envA.eventId);
+  assert(d && d.context === 'play' || d && d.fields && d.fields.context === 'play', 'draft stored');
+  const r3 = buildReview({ eventId: envA.eventId, reviewId: r1.reviewId, previous: r2, fields: { context: 'play' }, uuid, now });
+  await db.saveReview(r3);
+  assert((await db.getDraft(envA.eventId)) == null, 'draft removed');
+});
+
+await check('saveReview rejects a stale, forged or restarted baseRevision (revision_conflict); nothing written, draft kept', async () => {
+  const list = await db.listReviews(envA.eventId);
+  assert(list.map((r) => r.revision).join() === '1,2,3', 'precondition ' + list.map((r) => r.revision));
+  await db.putDraft(envA.eventId, { context: 'door' });
+  const stale = buildReview({ eventId: envA.eventId, reviewId: r1.reviewId, previous: list[0], fields: { context: 'door' }, uuid, now });
+  const forged = { ...buildReview({ eventId: envA.eventId, reviewId: r1.reviewId, previous: list[2], fields: { context: 'door' }, uuid, now }), revision: 5 };
+  const restart = buildReview({ eventId: envA.eventId, reviewId: r1.reviewId, previous: null, fields: { context: 'door' }, uuid, now });
+  for (const [label, doc] of [['stale', stale], ['forged', forged], ['restart', restart]]) {
+    let msg = null;
+    try { await db.saveReview(doc); } catch (e) { msg = e && e.message; }
+    assert(msg === 'revision_conflict', label + ' got ' + msg);
+  }
+  assert((await db.listReviews(envA.eventId)).length === 3, 'a conflicting revision was stored');
+  const d = await db.getDraft(envA.eventId);
+  assert(d && d.context === 'door', 'draft removed by a rejected save');
+});
+
+await check('eventRevision index is unique: a raw duplicate [eventId, revision] write is rejected by the store', async () => {
+  const raw = await new Promise((res, rej) => { const r = indexedDB.open(dbName); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  try {
+    const tx = raw.transaction(['reviews'], 'readwrite');
+    const store = tx.objectStore('reviews');
+    assert(store.index('eventRevision').unique === true, 'index not unique');
+    const err = await new Promise((res) => {
+      const put = store.put({ messageId: uuid(), eventId: envA.eventId, revision: 1, eventRevision: [envA.eventId, 1], context: 'food' });
+      put.onerror = () => res(put.error);
+      tx.oncomplete = () => res(null);
+    });
+    assert(err && err.name === 'ConstraintError', 'duplicate accepted: ' + (err && err.name));
+  } finally { raw.close(); }
+  assert((await db.listReviews(envA.eventId)).length === 3, 'duplicate stored');
+});
+
+await check('deleteClip with a stale review tombstone rejects (revision_conflict) and keeps the clip', async () => {
+  const list = await db.listReviews(envA.eventId);
+  const tomb = buildTombstone({ installId: meta.installId, eventId: envA.eventId, clipId: clipIdA,
+    supersedesMessageId: envA.messageId, uuid, now });
+  const rt = buildReview({ eventId: envA.eventId, reviewId: list[0].reviewId, previous: list[0], fields: { deleted: true }, uuid, now });
+  let msg = null;
+  try { await db.deleteClip({ tombstone: tomb, reviewTombstone: rt }); } catch (e) { msg = e && e.message; }
+  assert(msg === 'revision_conflict', 'got ' + msg);
+  assert((await db.getClip(clipIdA)) instanceof Blob, 'clip deleted');
+  assert((await db.listTombstones()).length === 0, 'tombstone written');
+  assert((await db.listReviews(envA.eventId)).length === 3, 'review written');
+});
+
+await check('markExported sets exportedAt', async () => {
+  const when = now();
+  await db.markExported([envA.eventId], when);
+  const ev = await db.getEvent(envA.eventId);
+  assert(ev.exportedAt === when, 'exportedAt ' + ev.exportedAt);
+  assert((await db.listEvents())[0].exportedAt === when, 'listEvents exportedAt');
+});
+
+await check('usage counts', async () => {
+  const u = await db.usage();
+  assert(u.clips === 1 && u.bytes === clipA.size, JSON.stringify(u));
+});
+
+await check('fault injection: saveCapture rejects and nothing persisted', async () => {
+  const clipB = makeClip();
+  const idB = uuid();
+  const envB = capture(meta, idB, clipB.size);
+  const before = JSON.stringify(await db.listEvents());
+  const orig = IDBObjectStore.prototype.put;
+  let thrown = false;
+  IDBObjectStore.prototype.put = function (...a) {
+    if (!thrown) { thrown = true; throw new Error('injected'); }
+    return orig.apply(this, a);
+  };
+  let rejected = false;
+  try { await db.saveCapture(envB, clipB.blob); } catch { rejected = true; }
+  finally { IDBObjectStore.prototype.put = orig; }
+  assert(thrown, 'fault not triggered');
+  assert(rejected, 'did not reject');
+  assert(JSON.stringify(await db.listEvents()) === before, 'events changed');
+  assert((await db.getClip(idB)) === null, 'clip leaked');
+  assert((await db.usage()).clips === 1, 'usage changed');
+});
+
+await check('deleteClip hides event, getClip null, tombstones listed', async () => {
+  const tomb = buildTombstone({ installId: meta.installId, eventId: envA.eventId, clipId: clipIdA,
+    supersedesMessageId: envA.messageId, uuid, now });
+  const latest = (await db.listReviews(envA.eventId)).at(-1);
+  const rt = buildReview({ eventId: envA.eventId, reviewId: latest.reviewId, previous: latest, fields: { deleted: true }, uuid, now });
+  await db.deleteClip({ tombstone: tomb, reviewTombstone: rt });
+  assert((await db.listEvents()).length === 0, 'event still listed');
+  assert((await db.getClip(clipIdA)) === null, 'clip still present');
+  const ts = await db.listTombstones();
+  assert(ts.length === 1 && ts[0].messageId === tomb.messageId, 'tombstones');
+  assert((await db.usage()).clips === 0, 'usage');
+  const gone = await db.getEvent(envA.eventId);
+  assert(gone && gone.deleted === true, 'getEvent returns deleted event');
+  assert(gone.envelope.messageId === envA.messageId, 'getEvent returns original capture envelope');
+  const withDel = await db.listEvents({ includeDeleted: true });
+  assert(withDel.length === 1 && withDel[0].deleted === true && withDel[0].envelope.messageId === envA.messageId, 'includeDeleted');
+  // null reviewTombstone variant
+  const clipC = makeClip(); const idC = uuid(); const envC = capture(meta, idC, clipC.size);
+  await db.saveCapture(envC, clipC.blob);
+  const tc = buildTombstone({ installId: meta.installId, eventId: envC.eventId, clipId: idC,
+    supersedesMessageId: envC.messageId, uuid, now });
+  await db.deleteClip({ tombstone: tc, reviewTombstone: null });
+  assert((await db.listEvents()).length === 0, 'second event listed');
+  assert((await db.listEvents({ includeDeleted: true })).length === 2, 'includeDeleted lists both');
+});
+
+await check('clearAll keeps installId', async () => {
+  await db.clearAll();
+  const m = await db.getMeta();
+  assert(m.installId === meta.installId, 'installId changed');
+  assert(m.persistGranted === true, 'persistGranted lost');
+  assert((await db.listEvents()).length === 0 && (await db.listTombstones()).length === 0, 'not empty');
+  assert((await db.usage()).clips === 0, 'usage');
+});
+
+db.close?.();
+await new Promise((res) => {
+  const rq = indexedDB.deleteDatabase(dbName);
+  rq.onsuccess = rq.onerror = rq.onblocked = () => res();
+});
+log(failed ? `FAILED ${failed}` : 'ALL PASS');
+</script>
+<p>
+<button id="rec2">Record 2 s</button>
+<button id="rechide">Record then hide</button>
+<button id="rec100">Stop at 100 ms</button>
+</p>
+<pre id="recout"></pre>
+<script type="module">
+import { Recorder } from '../recorder.js';
+import { sha256Hex } from '../wav.js';
+const ro = document.getElementById('recout');
+const rlog = (s) => { ro.textContent += s + '\n'; };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let lastCtx = null;
+const OrigCtx = globalThis.AudioContext;
+globalThis.AudioContext = class extends OrigCtx { constructor(...a) { super(...a); lastCtx = this; } };
+const mk = () => new Recorder({ onLevel() {}, onTick() {}, onAutoStop() {} });
+const guard = (id, fn) => document.getElementById(id).addEventListener('click', async () => {
+  try { await fn(); } catch (e) { rlog('FAIL ' + id + ' :: ' + (e && e.message || e)); }
+});
+const ok = (c, m) => rlog((c ? 'PASS ' : 'FAIL ') + m);
+
+// Automatic recorder checks (no microphone needed).
+let rfailed = 0;
+const rok = (c, m) => { if (!c) rfailed++; ok(c, m); };
+try {
+  const r = mk();
+  r.sampleRate = 16000;
+  r.frames = [new Float32Array(16000 * 31)];
+  r.recording = true;
+  const clip = await r.stop();
+  rok(clip.durationMs === 30000, 'late frames trimmed to 30000 ms (got ' + clip.durationMs + ')');
+  rok(clip.sizeBytes === 44 + 2 * 16000 * 30, 'trimmed sizeBytes ' + clip.sizeBytes);
+} catch (e) { rfailed++; rlog('FAIL trim :: ' + (e && e.message || e)); }
+try {
+  let fired = 0;
+  let ticks = 0;
+  const r = new Recorder({ onLevel() {}, onTick() { ticks++; }, onAutoStop() { fired++; } });
+  r.sampleRate = 16000;
+  r.frames = [new Float32Array(16000)];
+  r.recording = true;
+  r.timers.push(setTimeout(() => r.onAutoStop(), 0));
+  r.timers.push(setInterval(() => r.onTick(0), 1));
+  const p = r.stop();
+  rok(r.timers.length === 0, 'timers cleared synchronously by stop()');
+  await p;
+  await sleep(40);
+  rok(fired === 0 && ticks === 0, 'no auto-stop or tick during a manual stop (fired ' + fired + ', ticks ' + ticks + ')');
+} catch (e) { rfailed++; rlog('FAIL timers :: ' + (e && e.message || e)); }
+rlog(rfailed ? `recorder auto: FAILED ${rfailed}` : 'recorder auto: ALL PASS');
+
+guard('rec2', async () => {
+  const r = mk();
+  // As in the app: the context is created synchronously in the tap and passed in.
+  const ctx = Recorder.createContext();
+  const stream = await Recorder.requestPermission();
+  await r.start(stream, ctx);
+  ok(r.ctx === ctx, 'passed AudioContext used');
+  await sleep(2000);
+  const clip = await r.stop();
+  rlog('sampleRate ' + clip.sampleRate + ' durationMs ' + clip.durationMs.toFixed(1));
+  ok(Math.abs(clip.durationMs - 2000) <= 150, 'duration within 150 ms of 2000');
+  const frames = Math.round(clip.sampleRate * clip.durationMs / 1000);
+  ok(clip.sizeBytes === 44 + 2 * frames, 'sizeBytes ' + clip.sizeBytes + ' == 44 + 2*' + frames);
+  ok(clip.blob.type === 'audio/wav' && clip.blob.size === clip.sizeBytes, 'blob type/size');
+  ok(await sha256Hex(clip.wavBytes) === clip.sha256, 'sha256 matches');
+  ok(lastCtx.state === 'closed', 'AudioContext closed (' + lastCtx.state + ')');
+  ok(stream.getTracks().every((t) => t.readyState === 'ended'), 'tracks ended');
+});
+
+guard('rechide', async () => {
+  const r = mk();
+  const stream = await Recorder.requestPermission();
+  await r.start(stream);
+  await sleep(1000);
+  Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+  document.dispatchEvent(new Event('visibilitychange'));
+  const clip = await r.stop();
+  delete document.hidden;
+  ok(clip.interrupted === true, 'interrupted === true');
+  ok(lastCtx.state === 'closed', 'AudioContext closed');
+});
+
+guard('rec100', async () => {
+  const r = mk();
+  const stream = await Recorder.requestPermission();
+  await r.start(stream);
+  await sleep(100);
+  let msg = null;
+  try { await r.stop(); } catch (e) { msg = e.message; }
+  ok(msg === 'too_short', 'too_short (got ' + msg + ')');
+  ok(lastCtx.state === 'closed', 'AudioContext closed');
+  ok(stream.getTracks().every((t) => t.readyState === 'ended'), 'tracks ended');
+});
+</script>
+
+<h2>Task 6 flow checks</h2>
+<pre id="flowout"></pre>
+<script type="module">
+const fo = document.getElementById('flowout');
+const flog = (s) => { fo.textContent += s + '\n'; };
+let ffailed = 0;
+async function fcheck(name, fn) {
+  try { await fn(); flog('PASS ' + name); }
+  catch (e) { ffailed++; flog('FAIL ' + name + ' :: ' + (e && e.message || e)); }
+}
+function fassert(c, m) { if (!c) throw new Error(m || 'assertion failed'); }
+const uuid = () => crypto.randomUUID();
+const now = () => new Date().toISOString();
+let app, records, wav, openDb;
+try {
+  app = await import('../app.js');
+  records = await import('../records.js');
+  wav = await import('../wav.js');
+  openDb = (await import('../db.js')).default;
+} catch (e) {
+  flog('FAIL module load :: ' + e.message);
+  flog('FAILED 1 (module missing)');
+  throw e;
+}
+const { formatDuration, eventBadge, undoFields, runExport, appendReview, startExport, onRouteChange, isLocked, render } = app;
+const { buildTombstone } = await import('../records.js');
+const { buildCapture, buildReview } = records;
+
+await fcheck('formatDuration', async () => {
+  fassert(formatDuration(1200) === '0:01', formatDuration(1200));
+  fassert(formatDuration(29500) === '0:29', formatDuration(29500));
+  fassert(formatDuration(65000) === '1:05', formatDuration(65000));
+});
+
+const rev1 = buildReview({ eventId: 'e1', reviewId: 'r1', previous: null, fields: { context: 'food', location: 'kitchen' }, uuid, now });
+const rev2 = buildReview({ eventId: 'e1', reviewId: 'r1', previous: rev1, fields: { context: 'play' }, uuid, now });
+const stored = { envelope: { eventId: 'e1' }, exportedAt: null, deleted: false };
+
+await fcheck('eventBadge', async () => {
+  fassert(eventBadge(stored, []) === 'Needs review', 'no reviews');
+  const del = buildReview({ eventId: 'e1', reviewId: 'r1', previous: rev1, fields: { deleted: true }, uuid, now });
+  fassert(eventBadge(stored, [rev1, del]) === 'Needs review', 'deleted latest');
+  fassert(eventBadge(stored, [rev1]) === 'Reviewed · Food', eventBadge(stored, [rev1]));
+});
+
+await fcheck('undoFields', async () => {
+  fassert(JSON.stringify(undoFields(null, rev1)) === JSON.stringify({ deleted: true }), JSON.stringify(undoFields(null, rev1)));
+  const u = undoFields(rev1, rev2);
+  fassert(JSON.stringify(u) === JSON.stringify({ context: 'food', location: 'kitchen' }), JSON.stringify(u));
+});
+
+const fname = 'siri-tiri-harness-flow-' + Date.now();
+const fdb = await openDb(fname);
+const meta = await fdb.getMeta();
+const bytes = wav.encodeWav(new Int16Array(800), 16000);
+const env = buildCapture({ installId: meta.installId, clipId: uuid(), sampleRate: 16000, durationMs: 50,
+  sizeBytes: bytes.length, sha256: 'a'.repeat(64), clippedSamples: 0, recordedAt: now(),
+  interrupted: false, uuid, now });
+await fdb.saveCapture(env, new Blob([bytes], { type: 'audio/wav' }));
+
+function stubShare(share, canShare = () => true) {
+  // Own-property stubs shadow Navigator.prototype; deleting them restores the originals.
+  Object.defineProperty(navigator, 'share', { configurable: true, value: share });
+  Object.defineProperty(navigator, 'canShare', { configurable: true, value: canShare });
+  return () => { delete navigator.share; delete navigator.canShare; };
+}
+const fsleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function until(pred, ms = 3000) {
+  for (let i = 0; i < ms / 20 && !pred(); i++) await fsleep(20);
+  return pred();
+}
+const shareBtn = () => document.getElementById('share-next');
+
+await fcheck('fault injection: rejected share leaves exportedAt null', async () => {
+  let calls = 0;
+  const restore = stubShare(async () => { calls++; throw new DOMException('cancelled', 'AbortError'); });
+  let rejected = false;
+  try { await runExport(fdb, 'all'); } catch { rejected = true; }
+  finally { restore(); }
+  fassert(calls === 1, 'share called ' + calls);
+  fassert(rejected, 'runExport did not reject');
+  const ev = await fdb.getEvent(env.eventId);
+  fassert(ev.exportedAt === null, 'exportedAt ' + ev.exportedAt);
+});
+
+await fcheck('successful share marks exportedAt', async () => {
+  let files = null;
+  const restore = stubShare(async (data) => { files = data.files; });
+  let res;
+  try { res = await runExport(fdb, 'all'); } finally { restore(); }
+  fassert(res === 'shared', 'result ' + res);
+  fassert(files.length === 2, 'files ' + (files && files.length));
+  fassert(files[0].type === 'application/json' && /^siri-tiri-export-/.test(files[0].name), 'bundle first');
+  fassert(files[1].type === 'audio/wav' && files[1].name === env.eventId + '.wav', 'wav name');
+  const ev = await fdb.getEvent(env.eventId);
+  fassert(typeof ev.exportedAt === 'string', 'exportedAt ' + ev.exportedAt);
+});
+
+await fcheck('concurrent saves/undo cannot fork the revision chain', async () => {
+  const id = env.eventId;
+  const r1 = await appendReview(fdb, { eventId: id, previous: null, fields: { context: 'food' } });
+  fassert(r1 && r1.revision === 1, 'rev1');
+  const [a, b] = await Promise.all([
+    appendReview(fdb, { eventId: id, previous: r1, fields: { context: 'play' } }),
+    appendReview(fdb, { eventId: id, previous: r1, fields: { context: 'door' } }),
+  ]);
+  fassert((a === null) !== (b === null), 'exactly one save ran: ' + !!a + ',' + !!b);
+  const saved = a || b;
+  // Save-then-Undo while the save is in flight: the undo is ignored.
+  const [s3, u3] = await Promise.all([
+    appendReview(fdb, { eventId: id, previous: saved, fields: { context: 'greeting' } }),
+    appendReview(fdb, { eventId: id, previous: saved, fields: undoFields(r1, saved) }),
+  ]);
+  fassert(s3 && u3 === null, 'undo during save ignored');
+  const revs = (await fdb.listReviews(id)).map((r) => r.revision);
+  fassert(revs.join() === '1,2,3', 'revisions ' + revs.join());
+});
+
+function seedClip() {
+  const e = buildCapture({ installId: meta.installId, clipId: uuid(), sampleRate: 16000, durationMs: 50,
+    sizeBytes: bytes.length, sha256: 'a'.repeat(64), clippedSamples: 0, recordedAt: now(),
+    interrupted: false, uuid, now });
+  return fdb.saveCapture(e, new Blob([bytes], { type: 'audio/wav' })).then(() => e);
+}
+
+await fcheck('route change rejects a pending multi-chunk wait and releases the lock', async () => {
+  const box = document.createElement('div');
+  box.id = 'export-next';
+  document.body.append(box);
+  const seeded = [];
+  for (let i = 0; i < 21; i++) seeded.push(await seedClip());
+  let calls = 0;
+  const restore = stubShare(async () => { calls++; });
+  let outcome;
+  try {
+    const p = startExport(fdb, 'all');
+    fassert(await until(() => shareBtn()), 'part 1 prompt not shown');
+    fassert(calls === 0, 'shared before the part 1 tap');
+    shareBtn().click();
+    fassert(await until(() => /Share part 2 of/.test(shareBtn()?.textContent || '')), 'part 2 prompt not shown');
+    fassert(isLocked(), 'lock not held while waiting');
+    onRouteChange();
+    outcome = await p;
+  } finally { restore(); box.remove(); }
+  fassert(outcome === 'failed', 'outcome ' + outcome);
+  fassert(!isLocked(), 'lock still held');
+  fassert(calls === 1, 'share calls ' + calls);
+  for (const e of seeded) fassert((await fdb.getEvent(e.eventId)).exportedAt === null, 'marked exported');
+});
+
+await fcheck('a Settings re-render rejects a pending multi-chunk wait and releases the lock', async () => {
+  const box = document.createElement('div');
+  box.id = 'export-next';
+  const sec = document.createElement('section');
+  sec.id = 'screen-today';
+  document.body.append(box, sec);
+  const seeded = [];
+  for (let i = 0; i < 21; i++) seeded.push(await seedClip());
+  let calls = 0;
+  const restore = stubShare(async () => { calls++; });
+  let outcome;
+  try {
+    const p = startExport(fdb, 'all');
+    fassert(await until(() => shareBtn()), 'part 1 prompt not shown');
+    shareBtn().click();
+    fassert(await until(() => /Share part 2 of/.test(shareBtn()?.textContent || '')), 'part 2 prompt not shown');
+    await render();
+    outcome = await p;
+  } finally { restore(); box.remove(); sec.remove(); }
+  fassert(outcome === 'failed', 'outcome ' + outcome);
+  fassert(!isLocked(), 'lock still held');
+  fassert(calls === 1, 'share calls ' + calls);
+  for (const e of seeded) fassert((await fdb.getEvent(e.eventId)).exportedAt === null, 'marked exported');
+});
+
+await fcheck('deleted event exported as records only (tombstone, reviews; no WAV, no manifest)', async () => {
+  const victim = await seedClip();
+  const r1 = await appendReview(fdb, { eventId: victim.eventId, previous: null, fields: { context: 'food' } });
+  const tomb = buildTombstone({ installId: meta.installId, eventId: victim.eventId, clipId: victim.payload.clipId,
+    supersedesMessageId: victim.messageId, uuid, now });
+  await fdb.deleteClip({ tombstone: tomb, reviewTombstone: null });
+  await appendReview(fdb, { eventId: victim.eventId, previous: r1, fields: { context: 'door' } });
+  let files = [];
+  const restore = stubShare(async (data) => { files.push(...data.files); });
+  try { await runExport(fdb, 'all', { beforeChunk: async () => {} }); } finally { restore(); }
+  const bundle = JSON.parse(await files[0].text());
+  const ids = bundle.events.filter((e) => e.eventId === victim.eventId).map((e) => e.messageId);
+  fassert(ids.includes(victim.messageId) && ids.includes(tomb.messageId), 'capture + tombstone');
+  fassert(bundle.reviews.filter((r) => r.eventId === victim.eventId).length === 2, 'reviews');
+  fassert(!bundle.clips.some((c) => c.eventId === victim.eventId), 'manifest entry present');
+  fassert(!files.some((f) => f.name === victim.eventId + '.wav'), 'wav shared');
+  fassert(files.length === 1 + bundle.clips.length, 'file count ' + files.length);
+  fassert(typeof (await fdb.getEvent(victim.eventId)).exportedAt === 'string', 'deleted event not marked exported');
+});
+
+// Everything is exported at this point; each check below seeds what it exports.
+await fcheck('first share is issued only after the "Share export" tap resolves', async () => {
+  const box = document.createElement('div');
+  box.id = 'export-next';
+  document.body.append(box);
+  const fresh = await seedClip();
+  let files = null;
+  let calls = 0;
+  const restore = stubShare(async (d) => { calls++; files = d.files; });
+  let outcome;
+  try {
+    const p = startExport(fdb, 'new');
+    fassert(await until(() => shareBtn()), 'prompt not shown');
+    fassert(shareBtn().textContent === 'Share export', 'label ' + shareBtn().textContent);
+    await fsleep(100);
+    fassert(calls === 0, 'shared before the tap');
+    fassert(isLocked(), 'lock not held while waiting');
+    shareBtn().click();
+    outcome = await p;
+  } finally { restore(); box.remove(); }
+  fassert(outcome === 'shared', 'outcome ' + outcome);
+  fassert(calls === 1, 'share calls ' + calls);
+  fassert(files.length === 2 && files[1].name === fresh.eventId + '.wav', 'files ' + files.map((f) => f.name));
+  fassert(typeof (await fdb.getEvent(fresh.eventId)).exportedAt === 'string', 'not marked exported');
+});
+
+await fcheck('NotAllowedError share asks for another tap and retries instead of failing', async () => {
+  const fresh = await seedClip();
+  let calls = 0;
+  const taps = [];
+  const restore = stubShare(async () => { if (++calls === 1) throw new DOMException('no activation', 'NotAllowedError'); });
+  let res;
+  try { res = await runExport(fdb, 'new', { beforeChunk: async (i, t, m) => { taps.push([i, t, m].join()); } }); } finally { restore(); }
+  fassert(res === 'shared', 'result ' + res);
+  fassert(calls === 2, 'share calls ' + calls);
+  fassert(taps.join('|') === '0,1,share|0,1,share', 'taps ' + taps.join('|'));
+  fassert(typeof (await fdb.getEvent(fresh.eventId)).exportedAt === 'string', 'not marked exported');
+});
+
+await fcheck('canShare rejecting the JSON bundle retries with text/plain .json.txt', async () => {
+  const fresh = await seedClip();
+  let files = null;
+  const restore = stubShare(async (d) => { files = d.files; }, ({ files: f }) => !f.some((x) => x.type === 'application/json'));
+  let res;
+  try { res = await runExport(fdb, 'new'); } finally { restore(); }
+  fassert(res === 'shared', 'result ' + res);
+  fassert(files[0].type === 'text/plain' && /^siri-tiri-export-.*\.json\.txt$/.test(files[0].name), 'bundle ' + files[0].type + ' ' + files[0].name);
+  fassert(JSON.parse(await files[0].text()).exportVersion === 1, 'bundle content');
+  fassert(typeof (await fdb.getEvent(fresh.eventId)).exportedAt === 'string', 'not marked exported');
+});
+
+await fcheck('download fallback: "No" leaves exportedAt null, "Yes" marks exported (runExport)', async () => {
+  const fresh = await seedClip();
+  const names = [];
+  let asked = null;
+  const restore = stubShare(async () => { throw new Error('share must not be called'); }, () => false);
+  let res;
+  try {
+    res = await runExport(fdb, 'new', { download: (f) => names.push(f.name), confirmDownloaded: async (n) => { asked = n; return false; } });
+    fassert(res === 'unconfirmed', 'result ' + res);
+    fassert(asked === 2 && names.length === 2, 'asked ' + asked + ' downloads ' + names.length);
+    fassert((await fdb.getEvent(fresh.eventId)).exportedAt === null, 'marked exported after No');
+    res = await runExport(fdb, 'new', { download: () => {} });
+    fassert(res === 'unconfirmed', 'no confirm callback must not mark: ' + res);
+    fassert((await fdb.getEvent(fresh.eventId)).exportedAt === null, 'auto-marked a download');
+    res = await runExport(fdb, 'new', { download: () => {}, confirmDownloaded: async () => true });
+  } finally { restore(); }
+  fassert(res === 'downloaded', 'result ' + res);
+  fassert(typeof (await fdb.getEvent(fresh.eventId)).exportedAt === 'string', 'not marked after Yes');
+});
+
+await fcheck('download fallback through the UI: "Download export" tap, then the "Did all N files download?" dialog', async () => {
+  const box = document.createElement('div');
+  box.id = 'export-next';
+  const dlg = document.createElement('dialog');
+  dlg.id = 'confirm';
+  dlg.innerHTML = '<form method="dialog"><p id="confirm-text"></p><button value="cancel">Cancel</button><button value="ok" class="danger" id="confirm-ok">Delete</button></form>';
+  document.body.append(box, dlg);
+  const fresh = await seedClip();
+  const restore = stubShare(async () => { throw new Error('share must not be called'); }, () => false);
+  const outcomes = [];
+  try {
+    for (const answer of ['cancel', 'ok']) {
+      let downloads = 0;
+      const p = startExport(fdb, 'new', { download: () => { downloads++; } });
+      fassert(await until(() => shareBtn()), 'prompt not shown');
+      fassert(shareBtn().textContent === 'Download export', 'label ' + shareBtn().textContent);
+      fassert(downloads === 0, 'downloaded before the tap');
+      shareBtn().click();
+      fassert(await until(() => dlg.open), 'confirm dialog not shown');
+      fassert(document.getElementById('confirm-text').textContent === 'Did all 2 files download?', document.getElementById('confirm-text').textContent);
+      const btn = dlg.querySelector(`button[value="${answer}"]`);
+      fassert(btn.textContent === (answer === 'ok' ? 'Yes' : 'No'), 'button ' + btn.textContent);
+      btn.click();
+      outcomes.push(await p);
+      fassert(downloads === 2, 'downloads ' + downloads);
+      const at = (await fdb.getEvent(fresh.eventId)).exportedAt;
+      if (answer === 'cancel') fassert(at === null, 'marked exported after No');
+      else fassert(typeof at === 'string', 'not marked after Yes');
+    }
+  } finally { restore(); box.remove(); dlg.remove(); }
+  fassert(outcomes.join() === 'unconfirmed,downloaded', 'outcomes ' + outcomes);
+  fassert(!isLocked(), 'lock still held');
+});
+
+await fcheck('Export new carries a later review of an exported event, records only (no WAV, no manifest entry)', async () => {
+  const before = (await fdb.getEvent(env.eventId)).exportedAt;
+  fassert(typeof before === 'string', 'precondition: env exported');
+  await fsleep(5);
+  const latest = (await fdb.listReviews(env.eventId)).at(-1);
+  const rev = await appendReview(fdb, { eventId: env.eventId, previous: latest, fields: { context: 'attention' } });
+  const files = [];
+  const restore = stubShare(async (d) => { files.push(...d.files); });
+  try { await runExport(fdb, 'new'); } finally { restore(); }
+  const bundle = JSON.parse(await files[0].text());
+  fassert(bundle.events.some((e) => e.messageId === env.messageId), 'capture envelope missing');
+  fassert(bundle.reviews.some((r) => r.messageId === rev.messageId), 'later review missing');
+  fassert(!bundle.clips.some((c) => c.eventId === env.eventId), 'manifest entry present');
+  fassert(!files.some((f) => f.name === env.eventId + '.wav'), 'wav re-shared');
+  fassert(files.length === 1 + bundle.clips.length, 'file count ' + files.length);
+  const after = (await fdb.getEvent(env.eventId)).exportedAt;
+  fassert(after > before, 'exportedAt not advanced');
+});
+
+await fcheck("Export all re-sends the WAV of an already-exported live event; Export unreviewed does not", async () => {
+  fassert(typeof (await fdb.getEvent(env.eventId)).exportedAt === 'string', 'precondition: env exported');
+  let files = [];
+  const restore = stubShare(async (d) => { files.push(...d.files); });
+  try {
+    await runExport(fdb, 'all');
+    const bundle = JSON.parse(await files[0].text());
+    fassert(bundle.clips.some((c) => c.eventId === env.eventId), 'all: manifest entry missing');
+    fassert(files.some((f) => f.name === env.eventId + '.wav'), 'all: wav missing');
+    fassert(files.length === 1 + bundle.clips.length, 'all: file count ' + files.length);
+    const latest = (await fdb.listReviews(env.eventId)).at(-1);
+    await appendReview(fdb, { eventId: env.eventId, previous: latest, fields: { deleted: true } });
+    files = [];
+    await runExport(fdb, 'unreviewed');
+    const b2 = JSON.parse(await files[0].text());
+    fassert(b2.events.some((e) => e.messageId === env.messageId), 'unreviewed: env not selected');
+    fassert(!b2.clips.some((c) => c.eventId === env.eventId), 'unreviewed: manifest entry present');
+    fassert(!files.some((f) => f.name === env.eventId + '.wav'), 'unreviewed: wav re-sent');
+  } finally { restore(); }
+});
+
+await fcheck('appendReview from a stale previous rejects with revision_conflict', async () => {
+  const list = await fdb.listReviews(env.eventId);
+  let msg = null;
+  try { await appendReview(fdb, { eventId: env.eventId, previous: list[0], fields: { context: 'door' } }); } catch (e) { msg = e && e.message; }
+  fassert(msg === 'revision_conflict', 'got ' + msg);
+  fassert((await fdb.listReviews(env.eventId)).length === list.length, 'conflicting revision stored');
+});
+
+fdb.close();
+await new Promise((res) => {
+  const rq = indexedDB.deleteDatabase(fname);
+  rq.onsuccess = rq.onerror = rq.onblocked = () => res();
+});
+flog(ffailed ? `FAILED ${ffailed}` : 'ALL PASS');
+</script>

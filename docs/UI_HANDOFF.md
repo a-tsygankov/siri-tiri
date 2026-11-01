@@ -484,3 +484,13 @@ An iPhone review of the interactive mockups exposed two problems: a flex-based c
 - **Updates UI:** PWA update available/reload prompt after persisting drafts; device OTA progress, safe deferral, confirmation and rollback; local service updater status. Distinguish update *available*, *downloading*, *installing*, *verifying*, *succeeded* and *rolled back*.
 - **Accessibility:** readable sync states not encoded only by color, screen-reader announcements for failed sync, no forced reload during unsaved edits, and large safe-circle touch targets.
 - **Required new mockup states:** offline with queued reviews; reconnecting/sync progress; update available; OTA progress/failure; diagnostics error detail; version incompatibility; local inference unavailable. These are documented requirements, not yet implemented in interactive mockups.
+
+
+## Implemented PWA slice (November 2026)
+
+The working phone app is in `docs/app/` ([README](app/README.md)); it is the first real implementation of the Review flow and is local-only.
+
+- **Handoff states now implemented:** Saved on this phone, Needs review, Reviewed, Update ready. Review keeps hypothesized context separate from optional observed location, behavior and outcome; Unsure and quick-save are available; save, undo and edit append revisions.
+- **Not implemented:** Queued, Synced, Analysis complete, pending count, conflict resolution, diagnostics, version incompatibility and local-inference-unavailable states. There is no sync, so Saved on this phone must never be read as cloud acknowledgment.
+- Deleted events remain visible behind a "Show deleted" toggle in Events.
+- Verified only in desktop browsers (including a mobile viewport with a stubbed microphone). Real iPhone/Android behavior, VoiceOver and the round device are not covered.
