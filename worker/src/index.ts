@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { MIGRATION, PROTOCOL_VERSION, WORKER_VERSION, type Env } from './env';
+import { MAX_MESSAGES_BODY_BYTES, MAX_MESSAGES_PER_REQUEST, MIGRATION, PROTOCOL_VERSION, WORKER_VERSION, type Env } from './env';
+import { ingest } from './messages';
 import { log } from './log';
 import { createPairingCode, listDevices, pairDevice, requestNow, requireAdmin, requireDevice, revokeDevice, type AuthVars } from './auth';
 
@@ -58,6 +59,21 @@ app.post('/v1/devices/pair', async (c) => {
 });
 
 app.get('/v1/whoami', requireDevice, (c) => c.json(c.get('device')));
+
+app.post('/v1/messages', requireDevice, async (c) => {
+  const length = Number(c.req.header('Content-Length') ?? '0');
+  if (length > MAX_MESSAGES_BODY_BYTES) return c.json({ error: 'too_large', requestId: c.get('requestId') }, 413);
+  const text = await c.req.text();
+  if (text.length > MAX_MESSAGES_BODY_BYTES) return c.json({ error: 'too_large', requestId: c.get('requestId') }, 413);
+  let body: { messages?: unknown };
+  try { body = JSON.parse(text); } catch { return c.json({ error: 'bad_request', requestId: c.get('requestId') }, 400); }
+  const items = body?.messages;
+  if (!Array.isArray(items) || items.length === 0 || items.length > MAX_MESSAGES_PER_REQUEST) {
+    return c.json({ error: 'bad_request', requestId: c.get('requestId') }, 400);
+  }
+  const results = await ingest(c.env, c.get('device'), items, requestNow(c), c.get('requestId'));
+  return c.json({ results });
+});
 
 app.notFound((c) => c.json({ error: 'not_found', requestId: c.get('requestId') }, 404));
 
