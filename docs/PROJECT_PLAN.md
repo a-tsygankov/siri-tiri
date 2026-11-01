@@ -212,6 +212,8 @@ See [Offline Sync, Updates and Observability Architecture](ARCHITECTURE_SYNC_UPD
 - [ ] Human review of negative/uncertain examples, real frozen detector choice and evaluation with class coverage; independent new recordings and Tiri-specific validation when available. No operating threshold or live detector activation yet.
 - [x] Phone PWA local-only capture and review (`docs/app/`): recording to IndexedDB WAV, append-only owner reviews, manual export bundle, offline shell with explicit update. 33 Node tests pass; browser harness and desktop walk-through pass; not yet run on a real iPhone/Android. No sync or inference.
 - [ ] Local-service bundle importer with versioned 44.1/48 kHz to 16 kHz resampling; `manage.py analyze` on phone clips.
+- [x] Multi-device capture grouping design: [episode grouping spec](superpowers/specs/2026-11-01-episode-grouping-design.md), `contracts/episode.v1.schema.json` and documented capture `clockSource` fields. Captures are never deduplicated; append-only episode revisions link same-sound captures across devices, pick a primary clip and support owner split/merge.
+- [ ] Episode grouping implementation: SQLite migration 3 and D1 tables, grouper jobs in local service and Worker, PWA `clockSource: "phone"`, episode UI. Not started.
 - [ ] Authenticated LAN and Cloudflare sync, audio R2, device/PWA outboxes.
 - [ ] Update managers, signed OTA and hosted diagnostics.
 
