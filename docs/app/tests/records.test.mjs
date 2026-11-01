@@ -142,3 +142,46 @@ test('every CONTEXTS/LOCATIONS/BEHAVIORS/OUTCOMES value is in the review schema 
   assert.deepEqual(OUTCOMES.find((x) => x.value === 'door-opened'), { value: 'door-opened', label: 'Opened door' });
   assert.deepEqual(CONTEXTS.map((x) => x.label), ['Food', 'Attention', 'Play', 'Door', 'Greeting', 'Resting', 'Handling', 'Other', 'Unsure']);
 });
+
+import { syncBadge, isRemote } from '../records.js';
+
+test('buildCapture sets clockSource phone', () => {
+  const env = buildCapture(captureArgs(seqUuid()));
+  assert.equal(env.payload.clockSource, 'phone');
+  assert.deepEqual(checkSchema(env, eventSchema), []);
+});
+
+test('isRemote compares the envelope sourceId with this install', () => {
+  const env = buildCapture(captureArgs(seqUuid()));
+  assert.equal(isRemote(env, 'pwa-abc'), false);
+  assert.equal(isRemote(env, 'pwa-other'), true);
+});
+
+test('syncBadge: not paired is Saved on this phone whatever the outbox holds', () => {
+  const env = buildCapture(captureArgs(seqUuid()));
+  const ev = { envelope: env, acceptedAt: null };
+  assert.equal(syncBadge({ event: ev, outboxRows: [{ messageId: env.messageId, state: 'pending' }], clip: { uploadedAt: null }, paired: false, installId: 'pwa-abc' }), 'Saved on this phone');
+});
+
+test('syncBadge: paired with a pending or retrying row is Queued', () => {
+  const env = buildCapture(captureArgs(seqUuid()));
+  const ev = { envelope: env, acceptedAt: null };
+  assert.equal(syncBadge({ event: ev, outboxRows: [{ messageId: env.messageId, state: 'pending', attempts: 3 }], clip: { uploadedAt: null }, paired: true, installId: 'pwa-abc' }), 'Queued');
+  // accepted but the clip is still to upload
+  assert.equal(syncBadge({ event: { envelope: env, acceptedAt: '2026-11-01T12:00:01Z' }, outboxRows: [], clip: { uploadedAt: null, origin: 'local' }, paired: true, installId: 'pwa-abc' }), 'Queued');
+});
+
+test('syncBadge: accepted and uploaded is Synced; a remote event is Synced', () => {
+  const env = buildCapture(captureArgs(seqUuid()));
+  assert.equal(syncBadge({ event: { envelope: env, acceptedAt: '2026-11-01T12:00:01Z' }, outboxRows: [], clip: { uploadedAt: '2026-11-01T12:00:02Z', origin: 'local' }, paired: true, installId: 'pwa-abc' }), 'Synced');
+  assert.equal(syncBadge({ event: { envelope: env, acceptedAt: null }, outboxRows: [], clip: { origin: 'remote', blob: null }, paired: true, installId: 'pwa-other' }), 'Synced');
+  // a deleted (tombstoned) local event whose tombstone was accepted: nothing to upload
+  assert.equal(syncBadge({ event: { envelope: env, acceptedAt: '2026-11-01T12:00:01Z', deleted: true }, outboxRows: [], clip: null, paired: true, installId: 'pwa-abc' }), 'Synced');
+});
+
+test('syncBadge: a failed or conflict row is Sync failed', () => {
+  const env = buildCapture(captureArgs(seqUuid()));
+  const ev = { envelope: env, acceptedAt: '2026-11-01T12:00:01Z' };
+  assert.equal(syncBadge({ event: ev, outboxRows: [{ messageId: env.messageId, state: 'failed', lastError: 'clip_mismatch' }], clip: { uploadedAt: null }, paired: true, installId: 'pwa-abc' }), 'Sync failed');
+  assert.equal(syncBadge({ event: ev, outboxRows: [{ messageId: 'r1', kind: 'review', state: 'conflict' }], clip: { uploadedAt: '2026-11-01T12:00:02Z' }, paired: true, installId: 'pwa-abc' }), 'Sync failed');
+});

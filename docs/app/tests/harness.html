@@ -307,6 +307,150 @@ guard('rec100', async () => {
 });
 </script>
 
+<h2>Sync storage checks (db v2)</h2>
+<pre id="syncout"></pre>
+<script type="module">
+const so = document.getElementById('syncout');
+const slog = (s) => { so.textContent += s + '\n'; };
+let sfailed = 0;
+async function scheck(name, fn) {
+  try { await fn(); slog('PASS ' + name); }
+  catch (e) { sfailed++; slog('FAIL ' + name + ' :: ' + (e && e.message || e)); }
+}
+function sassert(c, m) { if (!c) throw new Error(m || 'assertion failed'); }
+const uuid = () => crypto.randomUUID();
+const now = () => new Date().toISOString();
+const sname = 'siri-tiri-sync-' + Date.now();
+let sdb, srec, swav;
+try {
+  srec = await import('../records.js');
+  swav = await import('../wav.js');
+  sdb = await (await import('../db.js')).default(sname);
+} catch (e) {
+  slog('FAIL module load :: ' + e.message);
+  slog('FAILED 1 (module missing)');
+  throw e;
+}
+const smeta = await sdb.getMeta();
+const sclip = () => { const b = swav.encodeWav(new Int16Array(800), 16000); return { blob: new Blob([b], { type: 'audio/wav' }), size: b.length }; };
+const scapture = (clipId, size, sourceId = smeta.installId) => srec.buildCapture({ installId: sourceId, clipId, sampleRate: 16000, durationMs: 50,
+  sizeBytes: size, sha256: 'a'.repeat(64), clippedSamples: 0, recordedAt: now(), interrupted: false, uuid, now });
+
+await scheck('meta has null sync fields and syncState starts at cursor 0', async () => {
+  sassert(smeta.deviceToken === null && smeta.deviceId === null && smeta.syncUrl === null, 'meta sync fields');
+  const st = await sdb.getSyncState();
+  sassert(st.cursor === 0 && st.lastSyncAt === null && st.lastError === null, JSON.stringify(st));
+  await sdb.setSyncState({ lastError: 'x' });
+  sassert((await sdb.getSyncState()).lastError === 'x', 'setSyncState');
+});
+
+const c1 = sclip(); const clipId1 = uuid(); const env1 = scapture(clipId1, c1.size);
+await scheck('outbox: listOutbox pending, updateOutbox, markAccepted, deleteOutbox', async () => {
+  await sdb.saveCapture(env1, c1.blob);
+  let rows = await sdb.listOutbox();
+  sassert(rows.length === 1 && rows[0].messageId === env1.messageId && rows[0].state === 'pending' && rows[0].kind === 'event', JSON.stringify(rows));
+  await sdb.updateOutbox(env1.messageId, { attempts: 2, nextAttemptAt: Date.now() + 60000, lastError: 'network' });
+  rows = await sdb.listOutbox({ before: Date.now() });
+  sassert(rows.length === 0, 'future nextAttemptAt should be skipped');
+  rows = await sdb.listOutbox();
+  sassert(rows[0].attempts === 2 && rows[0].lastError === 'network', 'patch applied');
+  await sdb.updateOutbox(env1.messageId, { state: 'failed' });
+  sassert((await sdb.listOutbox({ states: ['failed'] })).length === 1, 'failed listed');
+  sassert((await sdb.listOutbox()).length === 0, 'pending excludes failed');
+  await sdb.markAccepted('event', env1.messageId, '2026-11-01T12:00:00Z');
+  sassert((await sdb.getEvent(env1.eventId)).acceptedAt === '2026-11-01T12:00:00Z', 'acceptedAt on event');
+  await sdb.deleteOutbox(env1.messageId);
+  sassert((await sdb.listOutbox({ states: ['pending', 'failed', 'conflict', 'sent'] })).length === 0, 'deleted');
+});
+
+await scheck('listClipsToUpload only lists local clips of accepted captures; markUploaded clears them', async () => {
+  const todo = await sdb.listClipsToUpload();
+  sassert(todo.length === 1 && todo[0].clipId === clipId1 && todo[0].blob instanceof Blob && todo[0].sha256 === 'a'.repeat(64) && todo[0].eventId === env1.eventId, JSON.stringify(todo.map((t) => t.clipId)));
+  const c2 = sclip(); const env2 = scapture(uuid(), c2.size);
+  await sdb.saveCapture(env2, c2.blob); // not accepted yet
+  sassert((await sdb.listClipsToUpload()).length === 1, 'unaccepted capture listed');
+  await sdb.markUploaded(clipId1, '2026-11-01T12:00:05Z');
+  sassert((await sdb.listClipsToUpload()).length === 0, 'uploaded still listed');
+  const row = await sdb.getClipRow(clipId1);
+  sassert(row.uploadedAt === '2026-11-01T12:00:05Z' && row.origin === 'local', JSON.stringify(row));
+});
+
+const remoteCap = scapture(uuid(), 1644, 'pwa-other-phone');
+const remoteRev1 = srec.buildReview({ eventId: remoteCap.eventId, reviewId: uuid(), previous: null, fields: { context: 'food' }, uuid, now });
+await scheck('applyRemote stores events, reviews and clip stubs idempotently and advances the cursor with the page', async () => {
+  const entries = [
+    { seq: 1, kind: 'message', messageKind: 'event', body: remoteCap, receivedAt: now(), deviceId: 'd2' },
+    { seq: 2, kind: 'message', messageKind: 'review', body: remoteRev1, receivedAt: now(), deviceId: 'd2' },
+    { seq: 3, kind: 'clip', clipId: remoteCap.payload.clipId, eventId: remoteCap.eventId, sha256: 'a'.repeat(64), sizeBytes: 1644, deviceId: 'd2' },
+  ];
+  await sdb.applyRemote(entries, 3);
+  await sdb.applyRemote(entries, 3); // idempotent
+  const ev = await sdb.getEvent(remoteCap.eventId);
+  sassert(ev && ev.envelope.messageId === remoteCap.messageId && ev.acceptedAt, 'remote event stored with acceptedAt');
+  const revs = await sdb.listReviews(remoteCap.eventId);
+  sassert(revs.length === 1 && revs[0].messageId === remoteRev1.messageId, 'remote review stored once');
+  sassert((await sdb.listOutbox({ states: ['pending'] })).every((r) => r.messageId !== remoteCap.messageId && r.messageId !== remoteRev1.messageId), 'remote rows must not enter the outbox');
+  const stub = await sdb.getClipRow(remoteCap.payload.clipId);
+  sassert(stub && stub.origin === 'remote' && stub.blob === null && stub.remoteAvailable === true && stub.sha256 === 'a'.repeat(64), JSON.stringify(stub));
+  sassert((await sdb.getSyncState()).cursor === 3, 'cursor');
+  const stubs = await sdb.listClipStubs(10);
+  sassert(stubs.length === 1 && stubs[0].clipId === remoteCap.payload.clipId, 'listClipStubs');
+});
+
+await scheck('storeRemoteClip fills the stub; usage counts it', async () => {
+  const c = sclip();
+  await sdb.storeRemoteClip(remoteCap.payload.clipId, c.blob);
+  const b = await sdb.getClip(remoteCap.payload.clipId);
+  sassert(b instanceof Blob && b.size === c.size, 'blob stored');
+  sassert((await sdb.listClipStubs(10)).length === 0, 'stub still listed');
+  sassert((await sdb.getClipRow(remoteCap.payload.clipId)).origin === 'remote', 'origin kept');
+});
+
+await scheck('a pulled review colliding with a local revision moves the local one to conflicts', async () => {
+  const mine = srec.buildReview({ eventId: remoteCap.eventId, reviewId: remoteRev1.reviewId, previous: remoteRev1, fields: { context: 'play' }, uuid, now });
+  await sdb.saveReview(mine); // local revision 2, pending in the outbox
+  const theirs = srec.buildReview({ eventId: remoteCap.eventId, reviewId: remoteRev1.reviewId, previous: remoteRev1, fields: { context: 'door' }, uuid, now });
+  await sdb.applyRemote([{ seq: 4, kind: 'message', messageKind: 'review', body: theirs, receivedAt: now(), deviceId: 'd2' }], 4);
+  const revs = await sdb.listReviews(remoteCap.eventId);
+  sassert(revs.length === 2 && revs[1].messageId === theirs.messageId && revs[1].context === 'door', 'server revision wins locally');
+  const conflicts = await sdb.listConflicts(remoteCap.eventId);
+  sassert(conflicts.length === 1 && conflicts[0].messageId === mine.messageId && conflicts[0].doc.context === 'play', JSON.stringify(conflicts));
+  const ob = await sdb.listOutbox({ states: ['conflict'] });
+  sassert(ob.length === 1 && ob[0].messageId === mine.messageId, 'outbox row marked conflict');
+  await sdb.deleteConflict(mine.messageId);
+  sassert((await sdb.listConflicts(remoteCap.eventId)).length === 0, 'deleteConflict');
+  sassert((await sdb.listOutbox({ states: ['conflict'] })).length === 0, 'outbox conflict row removed with the conflict');
+});
+
+await scheck('a remote tombstone deletes the local clip and hides the event', async () => {
+  const tomb = srec.buildTombstone({ installId: 'pwa-other-phone', eventId: remoteCap.eventId, clipId: remoteCap.payload.clipId, supersedesMessageId: remoteCap.messageId, uuid, now });
+  await sdb.applyRemote([{ seq: 5, kind: 'message', messageKind: 'event', body: tomb, receivedAt: now(), deviceId: 'd2' }], 5);
+  sassert((await sdb.getClip(remoteCap.payload.clipId)) === null, 'clip still present');
+  sassert((await sdb.getEvent(remoteCap.eventId)).deleted === true, 'event not deleted');
+  sassert((await sdb.listTombstones()).some((t) => t.messageId === tomb.messageId), 'tombstone stored');
+});
+
+await scheck('applyRemote that throws leaves the cursor unchanged', async () => {
+  let threw = false;
+  try { await sdb.applyRemote([{ seq: 6, kind: 'message', messageKind: 'event', body: null, receivedAt: now(), deviceId: 'd2' }], 6); } catch { threw = true; }
+  sassert(threw, 'should throw on a malformed entry');
+  sassert((await sdb.getSyncState()).cursor === 5, 'cursor moved');
+});
+
+await scheck('clearAll keeps the pairing and resets the cursor', async () => {
+  await sdb.setMeta({ deviceToken: 'tok', deviceId: 'dev', syncUrl: 'http://x', deviceLabel: 'L' });
+  await sdb.clearAll();
+  const m = await sdb.getMeta();
+  sassert(m.deviceToken === 'tok' && m.deviceId === 'dev' && m.syncUrl === 'http://x' && m.installId === smeta.installId, JSON.stringify(m));
+  sassert((await sdb.getSyncState()).cursor === 0, 'cursor reset');
+  sassert((await sdb.listConflicts()).length === 0 && (await sdb.listOutbox({ states: ['pending', 'failed', 'conflict'] })).length === 0, 'stores cleared');
+});
+
+sdb.close();
+await new Promise((res) => { const rq = indexedDB.deleteDatabase(sname); rq.onsuccess = rq.onerror = rq.onblocked = () => res(); });
+slog(sfailed ? `FAILED ${sfailed}` : 'ALL PASS');
+</script>
+
 <h2>Task 6 flow checks</h2>
 <pre id="flowout"></pre>
 <script type="module">
