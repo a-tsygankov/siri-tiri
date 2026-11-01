@@ -754,7 +754,7 @@ function registerWorker() {
     state.applying = true;
     worker.postMessage({ type: 'SKIP_WAITING' });
   });
-  navigator.serviceWorker.register('./sw.js?v=' + encodeURIComponent(APP_VERSION), { scope: './' }).then((reg) => {
+  navigator.serviceWorker.register('./sw.js', { scope: './' }).then((reg) => {
     if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
     reg.addEventListener('updatefound', () => {
       const w = reg.installing;

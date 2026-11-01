@@ -1,7 +1,8 @@
-// Service worker for the Siri-Tiri phone app. The app version arrives as ?v= on the
-// registration URL (module importScripts is unavailable); the cache name embeds it.
-const VERSION = new URL(self.location.href).searchParams.get('v') || 'dev';
-const CACHE = 'siri-tiri-app-' + VERSION;
+// Service worker for the Siri-Tiri phone app.
+// A release bumps APP_VERSION here AND in version.js (tests/version.test.mjs enforces it); the
+// changed bytes are what makes browsers detect the update.
+const APP_VERSION = '0.1.0';
+const CACHE = 'siri-tiri-app-' + APP_VERSION;
 const PRECACHE = [
   './', './index.html', './app.css', './app.js', './db.js', './records.js', './wav.js',
   './export.js', './recorder.js', './recorder-worklet.js', './version.js',
