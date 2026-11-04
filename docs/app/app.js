@@ -2,12 +2,13 @@ import { APP_VERSION, PROTOCOL_VERSION } from './version.js';
 import {
   CONTEXTS, LOCATIONS, BEHAVIORS, OUTCOMES, LIMITS,
   buildCapture, buildTombstone, buildReview, buildTrim, buildRestore, isTrimmed,
-  latestReview, needsReview, storageState,
+  latestReview, needsReview, storageState, syncBadge, isRemote,
 } from './records.js';
 import { selectEvents, buildBundle, bundleFilename, shareFiles, isRecordsOnly, clipFilesFor } from './export.js';
 import { trimWav, sha256Hex } from './wav.js';
 import openDb from './db.js';
 import { Recorder } from './recorder.js';
+import { runSync, createApi, pair, deriveCounts, downloadClip } from './sync.js';
 
 // ---------------------------------------------------------------------------
 // Pure helpers (imported by tests/harness.html; no DOM access here).
@@ -110,6 +111,7 @@ const state = {
   db: null, meta: null, route: 'today', filter: 'all', showDeleted: false, update: null,
   rec: null, finishing: false, pendingClip: null, autoStopped: false, cueShown: false,
   lastLevelText: 0, review: null, objectUrl: null, undo: null, undoTimer: null,
+  sync: { running: false, last: null, timer: null },
 };
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -117,6 +119,9 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 const fmtDate = (iso) => new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso));
 const fmtBytes = (n) => (n < 1e6 ? `${Math.round(n / 1e3)} KB` : `${(n / 1e6).toFixed(1)} MB`);
 const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const paired = () => !!(state.meta && state.meta.deviceToken && state.meta.syncUrl);
+const syncHost = () => { try { return new URL(state.meta.syncUrl).host; } catch { return state.meta.syncUrl; } };
+const fmtWhen = (iso) => (iso ? fmtDate(iso) : 'never');
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const screen = (name) => $('#screen-' + name);
 const busy = () => !!(state.rec || state.pendingClip || state.starting);
@@ -145,7 +150,38 @@ function updateRow() {
     <button data-action="apply-update" ${updateBlocked() ? 'disabled' : ''}>Reload to update</button></div>`;
 }
 
-function eventRow(row, reviews, label) {
+// Sync context for a list render: outbox rows grouped by event, clip rows by clipId.
+async function syncContext(rows, reviews) {
+  const [outbox, clips] = await Promise.all([
+    state.db.listOutbox({ states: ['pending', 'sent', 'failed', 'conflict'] }), state.db.listClipRows(),
+  ]);
+  const eventOf = new Map();
+  for (const r of rows) eventOf.set(r.envelope.messageId, r.envelope.eventId);
+  for (const t of await state.db.listTombstones()) eventOf.set(t.messageId, t.eventId);
+  for (const [eventId, list] of reviews) for (const d of list) eventOf.set(d.messageId, eventId);
+  const byEvent = new Map();
+  const annotated = [];
+  for (const r of outbox) {
+    const eventId = eventOf.get(r.messageId);
+    if (!eventId) continue;
+    if (!byEvent.has(eventId)) byEvent.set(eventId, []);
+    byEvent.get(eventId).push(r);
+    annotated.push({ ...r, eventId });
+  }
+  return { byEvent, clips, outbox: annotated, paired: paired(), installId: state.meta.installId };
+}
+
+const SYNC_CLASS = { 'Saved on this phone': 'local', Queued: 'queued', Synced: 'synced', 'Sync failed': 'failed' };
+
+function syncBadgeHtml(row, ctx) {
+  if (!ctx) return '';
+  const label = syncBadge({ event: row, outboxRows: ctx.byEvent.get(row.envelope.eventId) || [], clip: ctx.clips.get(row.envelope.payload.clipId) || null, paired: ctx.paired, installId: ctx.installId });
+  return `<span class="badge ${SYNC_CLASS[label]}">${esc(label)}</span>`;
+}
+
+const recordedBy = (envelope) => (isRemote(envelope, state.meta.installId) ? 'Recorded on another device' : 'Recorded by you');
+
+function eventRow(row, reviews, label, ctx) {
   const e = row.envelope;
   const p = e.payload;
   const nr = needsReview(reviews);
@@ -154,8 +190,8 @@ function eventRow(row, reviews, label) {
   return `<article class="event">
     <div class="event-main">
       <strong>${esc(when)}</strong>
-      <small>${formatDuration(p.durationMs)} · Recorded by you</small>
-      <span class="badges"><span class="badge ${nr ? 'todo' : 'done'}">${esc(eventBadge(row, reviews))}</span>${isTrimmed(e) ? '<span class="badge gone">Trimmed</span>' : ''}${row.deleted ? '<span class="badge gone">Audio deleted</span>' : ''}</span>
+      <small>${formatDuration(p.durationMs)} · ${recordedBy(e)}</small>
+      <span class="badges"><span class="badge ${nr ? 'todo' : 'done'}">${esc(eventBadge(row, reviews))}</span>${syncBadgeHtml(row, ctx)}${isTrimmed(e) ? '<span class="badge gone">Trimmed</span>' : ''}${row.deleted ? '<span class="badge gone">Audio deleted</span>' : ''}</span>
     </div>
     <button class="primary" data-action="go" data-to="#review/${esc(e.eventId)}" aria-label="${action} recording from ${esc(when)}">${action}</button>
   </article>`;
@@ -234,6 +270,8 @@ export async function render() {
 async function renderToday() {
   const db = state.db;
   const [rows, reviews, usage] = await Promise.all([db.listEvents(), db.allReviews(), db.usage()]);
+  const ctx = await syncContext(rows, reviews);
+  const counts = deriveCounts({ events: rows, outbox: ctx.outbox, clips: ctx.clips, installId: ctx.installId, paired: ctx.paired });
   const pending = rows.filter((r) => needsReview(reviews.get(r.envelope.eventId) || []));
   const st = storageState(usage);
   const latest = pending[0];
@@ -247,11 +285,14 @@ async function renderToday() {
     <div class="stat">
       <div class="numbers">
         <div><strong>${pending.length}</strong><small>Needs review</small></div>
-        <div><strong>${rows.length}</strong><small>Saved on this phone</small></div>
+        ${ctx.paired ? `<div><strong>${counts.queued}</strong><small>Queued</small></div>
+        <div><strong>${counts.synced}</strong><small>Synced</small></div>
+        ${counts.failed ? `<div><strong>${counts.failed}</strong><small>Sync failed</small></div>` : ''}`
+        : `<div><strong>${rows.length}</strong><small>Saved on this phone</small></div>`}
       </div>
-      <p>All recordings stay on this phone</p>
+      <p>${ctx.paired ? `Syncing to ${esc(syncHost())}` : 'All recordings stay on this phone'}</p>
     </div>
-    ${latest ? `<h2>Latest to review</h2>${eventRow(latest, reviews.get(latest.envelope.eventId) || [], 'Review')}` : ''}`;
+    ${latest ? `<h2>Latest to review</h2>${eventRow(latest, reviews.get(latest.envelope.eventId) || [], 'Review', ctx)}` : ''}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -264,6 +305,7 @@ async function renderEvents() {
   const [rows, reviews] = await Promise.all([
     state.db.listEvents({ includeDeleted: state.showDeleted }), state.db.allReviews(),
   ]);
+  const ctx = await syncContext(rows, reviews);
   const shown = rows.filter((r) => {
     const nr = needsReview(reviews.get(r.envelope.eventId) || []);
     return state.filter === 'all' || (state.filter === 'needs' ? nr : !nr);
@@ -281,7 +323,7 @@ async function renderEvents() {
       <div role="radiogroup" aria-label="Filter events" class="chips">${chips}</div>
       <button class="chip" aria-pressed="${state.showDeleted}" data-action="toggle-deleted">Show deleted</button>
     </div>
-    ${shown.length ? shown.map((r) => eventRow(r, reviews.get(r.envelope.eventId) || [])).join('') : empty}`;
+    ${shown.length ? shown.map((r) => eventRow(r, reviews.get(r.envelope.eventId) || [], undefined, ctx)).join('') : empty}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -297,31 +339,40 @@ async function renderReview(eventId) {
       <button data-action="go" data-to="#events">Back to Events</button>`;
     return;
   }
-  const [reviews, draft, blob] = await Promise.all([
+  const [reviews, draft, blob, clipRow, conflicts] = await Promise.all([
     db.listReviews(eventId), db.getDraft(eventId),
     ev.deleted ? null : db.getClip(ev.envelope.payload.clipId),
+    ev.deleted ? null : db.getClipRow(ev.envelope.payload.clipId),
+    db.listConflicts(eventId),
   ]);
   const latest = latestReview(reviews);
   const fields = draft ? reviewFields(draft) : (latest && !latest.deleted ? reviewFields(latest) : {});
-  state.review = { eventId, ev, latest, fields, hasAudio: !!blob, trim: null };
+  state.review = { eventId, ev, latest, fields, hasAudio: !!blob, conflicts, trim: null };
   if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
   state.objectUrl = blob ? URL.createObjectURL(blob) : null;
   const p = ev.envelope.payload;
   const trimmed = isTrimmed(ev.envelope);
   const undoVisible = state.undo && state.undo.eventId === eventId;
+  const ctx = await syncContext([ev], new Map([[eventId, reviews]]));
+  const pendingAudio = !blob && !ev.deleted && clipRow && clipRow.remoteAvailable;
+  const audioHtml = blob ? `<audio controls preload="none" src="${state.objectUrl}" aria-label="Play recording"></audio>`
+    : pendingAudio ? `<p class="flag" id="audio-state">${paired() ? 'Downloading audio…' : 'Audio not downloaded yet'}</p>`
+    : '<p class="flag">Audio deleted</p>';
+  const conflict = conflicts[0];
   el.innerHTML = `
     <button class="back" data-action="go" data-to="#events">← Events</button>
-    <h1 tabindex="-1">Recorded by you</h1>
+    <h1 tabindex="-1">${recordedBy(ev.envelope)}</h1>
     <p class="meta">${esc(fmtDate(p.recordedAt))} · ${formatDuration(p.durationMs)}${trimmed ? ` · Trimmed from ${formatDuration(p.trim.sourceDurationMs)}` : ''}</p>
     ${p.interrupted ? '<p class="flag">Recording was cut short</p>' : ''}
-    ${blob ? `<audio controls preload="none" src="${state.objectUrl}" aria-label="Play recording"></audio>`
-      : '<p class="flag">Audio deleted</p>'}
+    ${audioHtml}
     ${blob && !ev.deleted ? `<div class="row trim-actions">
         <button data-action="trim-open" aria-expanded="false" aria-controls="trim-editor">${trimmed ? 'Change trim' : 'Trim clip'}</button>
         ${trimmed ? '<button data-action="trim-restore">Restore original</button>' : ''}
       </div>
       <section class="section trim" id="trim-editor" hidden aria-labelledby="trim-title"></section>` : ''}
-    <p><span class="badge ${needsReview(reviews) ? 'todo' : 'done'}" id="review-status">${esc(eventBadge(ev, reviews))}</span></p>
+    <p><span class="badge ${needsReview(reviews) ? 'todo' : 'done'}" id="review-status">${esc(eventBadge(ev, reviews))}</span> ${syncBadgeHtml(ev, ctx)}</p>
+    ${conflict ? `<div class="banner warn" id="conflict-row"><p><strong>Review conflict.</strong> Another device saved a review first. Your choice here (${esc(labelOf(CONTEXTS, conflict.doc.context))}) was not applied.</p>
+      <button data-action="resolve-conflict">Save again</button><button data-action="dismiss-conflict">Discard mine</button></div>` : ''}
     ${SECTIONS.map((s) => `
       <fieldset class="section">
         <legend>${s.title}</legend>
@@ -351,6 +402,42 @@ async function renderReview(eventId) {
     count();
     saveDraft();
   });
+  if (pendingAudio && paired()) fetchClipForReview(eventId, clipRow);
+}
+
+// On-demand download of a remote clip the owner just opened; re-renders when it lands.
+async function fetchClipForReview(eventId, clipRow) {
+  const r = state.review;
+  const result = await downloadClip(state.db, syncApi(), clipRow).catch(() => 'network');
+  if (state.review !== r) return;
+  if (result === 'ok') { await renderReview(eventId); return; }
+  const el = $('#audio-state');
+  if (el) el.textContent = result === 'unauthorized' ? 'Not paired. Audio not downloaded yet' : 'Audio not downloaded yet';
+}
+
+// Rebase the refused local revision on the latest synced one and save it as a new revision.
+async function resolveConflictAction() {
+  const r = state.review;
+  const conflict = r && r.conflicts && r.conflicts[0];
+  if (!conflict) return;
+  const latest = latestReview(await state.db.listReviews(r.eventId));
+  let doc;
+  try { doc = await appendReview(state.db, { eventId: r.eventId, previous: latest, fields: reviewFields(conflict.doc) }); }
+  catch (e) { if (!(await onReviewConflict(e, r.eventId))) announce('Could not save. Try again.'); return; }
+  if (!doc) return;
+  await state.db.deleteConflict(conflict.messageId);
+  await renderReview(r.eventId);
+  announce('Saved on this phone');
+  scheduleSync('review');
+}
+
+async function dismissConflictAction() {
+  const r = state.review;
+  const conflict = r && r.conflicts && r.conflicts[0];
+  if (!conflict) return;
+  await state.db.deleteConflict(conflict.messageId);
+  await renderReview(r.eventId);
+  announce('Discarded');
 }
 
 // ---------------------------------------------------------------------------
@@ -510,6 +597,7 @@ async function saveTrimAction() {
   leaveReview();
   await renderReview(r.eventId);
   announce('Trimmed. Saved on this phone');
+  scheduleSync('capture');
   $('[data-action="trim-open"]')?.focus();
 }
 
@@ -533,6 +621,7 @@ async function restoreTrimAction() {
   leaveReview();
   await renderReview(r.eventId);
   announce('Original restored. Saved on this phone');
+  scheduleSync('capture');
   $('[data-action="trim-open"]')?.focus();
 }
 
@@ -570,6 +659,7 @@ async function saveReviewAction() {
   r.latest = doc;
   setReviewStatus([doc]);
   announce('Saved on this phone');
+  scheduleSync('review');
   state.undo = { eventId: r.eventId, previous, saved: doc };
   $('#undo-row').hidden = false;
   clearTimeout(state.undoTimer);
@@ -594,6 +684,7 @@ async function undoAction() {
   if (!doc) return;
   clearTimeout(state.undoTimer);
   state.undo = null;
+  scheduleSync('review');
   if (!state.review || state.review.eventId !== u.eventId) return;
   await renderReview(u.eventId);
   announce('Undone. Saved on this phone');
@@ -639,6 +730,7 @@ async function deleteClipAction() {
       return true;
     });
   } catch (e) { if (!(await onReviewConflict(e, r.eventId))) announce('Could not delete. Try again.'); return; }
+  scheduleSync('delete');
   if (!done || state.review !== r) return;
   leaveReview();
   await renderReview(r.eventId);
@@ -661,15 +753,52 @@ async function persistState(request) {
   return granted ? 'granted' : 'denied';
 }
 
+function syncCard(syncState, failedRows, queuedCount) {
+  if (!paired()) {
+    return `<section class="card" id="sync-card"><h2>Cloud sync</h2>
+      <p><span class="badge local">Not paired</span></p>
+      <p class="hint">Pair this app with your Siri-Tiri server so clips and reviews reach your other phones. Get a pairing code from the server's pairing script; it works once.</p>
+      <label for="sync-url">Server URL</label>
+      <input id="sync-url" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false" placeholder="https://…" value="${esc(state.meta.syncUrl || '')}">
+      <label for="sync-code">Pairing code</label>
+      <input id="sync-code" autocapitalize="characters" autocomplete="one-time-code" spellcheck="false" maxlength="12">
+      <button class="primary" data-action="pair">Pair</button>
+      <p class="hint" id="sync-msg" role="status"></p>
+    </section>`;
+  }
+  const failed = failedRows.map((r) => `<li>${r.kind === 'review' ? 'Review' : 'Recording'} · ${esc(r.lastError || r.state)}</li>`).join('');
+  return `<section class="card" id="sync-card"><h2>Cloud sync</h2>
+    <p><span class="badge synced">Paired</span> as ${esc(state.meta.deviceLabel || 'this device')} with ${esc(syncHost())}</p>
+    <dl>
+      <div><dt>Last sync</dt><dd>${esc(fmtWhen(syncState.lastSyncAt))}</dd></div>
+      <div><dt>Queued</dt><dd>${queuedCount}</dd></div>
+      ${syncState.lastError ? `<div><dt>Last problem</dt><dd>${esc(syncErrorText(syncState.lastError))}</dd></div>` : ''}
+    </dl>
+    ${failed ? `<p><strong>Sync failed</strong> for ${failedRows.length} ${failedRows.length === 1 ? 'item' : 'items'}:</p><ul class="failed-list">${failed}</ul>
+      <button data-action="retry-failed">Retry failed</button>` : ''}
+    <div class="sync-row">
+      <button class="primary" data-action="sync-now" ${state.sync.running ? 'disabled' : ''}>${state.sync.running ? 'Syncing…' : 'Sync now'}</button>
+      <button data-action="unpair">Unpair</button>
+    </div>
+    <p class="hint" id="sync-msg" role="status"></p>
+  </section>`;
+}
+
+const syncErrorText = (e) => ({ network: 'Could not reach the server', unauthorized: 'This device is no longer paired', apply_failed: 'Could not store synced data on this phone' }[e] || e);
+
 async function renderSettings() {
   const usage = await state.db.usage();
   const st = storageState(usage);
   const persist = await persistState(true);
   const persistText = { unavailable: 'Not available on this browser', granted: 'Granted', denied: 'Not granted' }[persist];
+  const [syncState, failedRows, queuedRows] = await Promise.all([
+    state.db.getSyncState(), state.db.listOutbox({ states: ['failed', 'conflict'] }), state.db.listOutbox({ states: ['pending', 'sent'] }),
+  ]);
   const el = screen('settings');
   el.innerHTML = `
     <h1 tabindex="-1">Settings</h1>
     ${updateRow()}
+    ${syncCard(syncState, failedRows, queuedRows.length)}
     <section class="card"><h2>About</h2><dl>
       <div><dt>App version</dt><dd>${APP_VERSION}</dd></div>
       <div><dt>Protocol version</dt><dd>${PROTOCOL_VERSION}</dd></div>
@@ -684,7 +813,7 @@ async function renderSettings() {
     ${st === 'blocked' ? '<p class="banner warn">Storage full. Export or delete clips to record.</p>' : ''}
     </section>
     <section class="card"><h2>Export</h2>
-      <p class="hint">Opens the share sheet, or downloads the files. Nothing is uploaded. Export new also includes reviews changed since the last export. Export all always includes audio; Export new and Export unreviewed carry records only for clips that already left the phone. Deleted clips are always records only.</p>
+      <p class="hint">Opens the share sheet, or downloads the files. Export new also includes reviews changed since the last export. Export all always includes audio; Export new and Export unreviewed carry records only for clips that already left the phone. Deleted clips are always records only.</p>
       <div class="stack">
         <button class="primary" data-action="export" data-mode="new">Export new</button>
         <button data-action="export" data-mode="unreviewed">Export unreviewed</button>
@@ -703,6 +832,95 @@ async function renderSettings() {
       The installed app keeps its own storage. In a Safari tab, iOS may remove clips after seven days without use; the installed app is not affected. Export regularly either way.</p></section>`}`;
   const input = $('#confirm-delete', el);
   input.addEventListener('input', () => { $('[data-action="delete-all"]', el).disabled = input.value !== 'DELETE'; });
+}
+
+// ---------------------------------------------------------------------------
+// Cloud sync wiring
+// ---------------------------------------------------------------------------
+
+function syncApi() {
+  return createApi({ baseUrl: state.meta.syncUrl, token: state.meta.deviceToken });
+}
+
+function syncMessage(text) {
+  const el = $('#sync-msg');
+  if (el) el.textContent = text;
+}
+
+// Runs a sync now (serialized inside sync.js) and refreshes the visible screen afterwards.
+export async function syncNow({ announceResult = false } = {}) {
+  if (!paired()) return { outcome: 'unpaired' };
+  state.sync.running = true;
+  if (state.route === 'settings') $('[data-action="sync-now"]')?.setAttribute('disabled', '');
+  let result;
+  try {
+    result = await runSync(state.db, syncApi(), { canDownload: () => !busy() });
+  } finally {
+    state.sync.running = false;
+    state.sync.last = result || null;
+  }
+  if (result.outcome === 'unauthorized') {
+    state.meta = await state.db.getMeta();
+    announce('This device is no longer paired. Pair again in Settings.');
+  } else if (announceResult) {
+    const text = {
+      ok: `Synced. ${result.pushed} sent, ${result.pulled} received, ${result.uploaded} uploaded, ${result.downloaded} downloaded${result.failed ? `, ${result.failed} failed` : ''}.`,
+      offline: 'Could not reach the server. Will retry later.',
+      error: 'Sync stopped on an error. Will retry later.',
+      busy: 'Sync is already running.',
+    }[result.outcome] || 'Sync finished.';
+    announce(text);
+  }
+  if (result.outcome !== 'busy') await render();
+  return result;
+}
+
+// Debounced trigger after a save, on launch, resume and reconnect.
+export function scheduleSync(reason, delayMs = 2000) {
+  if (!paired()) return;
+  clearTimeout(state.sync.timer);
+  state.sync.timer = setTimeout(() => { syncNow().catch((e) => console.error('sync', reason, e)); }, delayMs);
+}
+
+async function pairAction() {
+  const url = ($('#sync-url')?.value || '').trim();
+  const code = ($('#sync-code')?.value || '').trim();
+  if (!/^https?:\/\//.test(url)) { syncMessage('Enter the server URL, starting with https://'); $('#sync-url')?.focus(); return; }
+  if (!code) { syncMessage('Enter the pairing code.'); $('#sync-code')?.focus(); return; }
+  syncMessage('Pairing…');
+  const label = `${isStandalone() ? 'Installed app' : 'Browser tab'} · ${navigator.platform || 'phone'}`;
+  const res = await pair({ baseUrl: url, code, sourceId: state.meta.installId, version: APP_VERSION, label });
+  if (!res.ok) {
+    syncMessage({ rejected: 'That code was not accepted. Codes work once and expire after 15 minutes.', network: 'Could not reach that server.', protocol: 'That server speaks a different protocol version.' }[res.reason]);
+    return;
+  }
+  await state.db.setMeta({ syncUrl: url.replace(/\/+$/, ''), deviceToken: res.token, deviceId: res.deviceId, deviceLabel: label });
+  state.meta = await state.db.getMeta();
+  announce('Paired. Syncing…');
+  await render();
+  await syncNow({ announceResult: true });
+}
+
+async function unpairAction() {
+  const ok = await confirmDialog('Unpair this device? Recordings stay on this phone and stop syncing until you pair again.', 'Unpair');
+  if (!ok) return;
+  await state.db.setMeta({ deviceToken: null, deviceId: null, deviceLabel: null });
+  state.meta = await state.db.getMeta();
+  announce('Unpaired');
+  await render();
+}
+
+// Failed and conflict rows go back to pending, except a clip the Worker refused for good.
+async function retryFailedAction() {
+  const rows = await state.db.listOutbox({ states: ['failed', 'conflict'] });
+  let n = 0;
+  for (const r of rows) {
+    if (r.lastError === 'clip_mismatch' || r.lastError === 'revision_conflict') continue;
+    await state.db.updateOutbox(r.messageId, { state: 'pending', attempts: 0, nextAttemptAt: 0, lastError: null });
+    n++;
+  }
+  announce(n ? `Retrying ${n} ${n === 1 ? 'item' : 'items'}.` : 'Nothing can be retried automatically. Open the recording for details.');
+  if (n) await syncNow({ announceResult: true }); else await render();
 }
 
 let pendingTap = null;
@@ -776,6 +994,7 @@ async function deleteExportedAction() {
       }), clipIds: clipIdsOf(r) });
     }
     announce(`Deleted the audio of ${n} exported ${n === 1 ? 'clip' : 'clips'}.`);
+    scheduleSync('delete');
   } catch { announce('Could not delete every clip. Try again.'); }
   await render();
 }
@@ -956,6 +1175,7 @@ async function saveClip() {
   closeSheet();
   location.hash = '#review/' + pending.envelope.eventId;
   announce((state.autoStopped ? 'Stopped at 30 s. ' : '') + 'Saved on this phone');
+  scheduleSync('capture');
 }
 
 // ---------------------------------------------------------------------------
@@ -990,6 +1210,12 @@ const ACTIONS = {
   'delete-exported': () => exclusive(deleteExportedAction),
   'delete-all': () => exclusive(deleteAllAction),
   'apply-update': () => { if (!updateBlocked() && state.update) state.update(); },
+  pair: () => exclusive(pairAction),
+  'sync-now': () => syncNow({ announceResult: true }),
+  unpair: () => exclusive(unpairAction),
+  'retry-failed': () => exclusive(retryFailedAction),
+  'resolve-conflict': resolveConflictAction,
+  'dismiss-conflict': dismissConflictAction,
 };
 
 // Export and bulk deletes must not interleave (e.g. Delete everything mid-way through a loop).
@@ -1032,6 +1258,10 @@ export async function init() {
   persistState(!state.meta.persistGranted).catch(() => {});
   await route({ focus: false });
   registerWorker();
+  // Sync on launch, on return to the foreground and on reconnect. Never in the background.
+  scheduleSync('launch', 500);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) scheduleSync('resume', 1000); });
+  window.addEventListener('online', () => scheduleSync('online', 1000));
 }
 
 // After the first render, so a registration failure never blocks the app.

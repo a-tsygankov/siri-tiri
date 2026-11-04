@@ -5,7 +5,7 @@ const APP_VERSION = '0.2.0';
 const CACHE = 'siri-tiri-app-' + APP_VERSION;
 const PRECACHE = [
   './', './index.html', './app.css', './app.js', './db.js', './records.js', './wav.js',
-  './export.js', './recorder.js', './recorder-worklet.js', './version.js',
+  './export.js', './recorder.js', './recorder-worklet.js', './version.js', './sync.js',
   './manifest.webmanifest', '../assets/cat-tiri-avatar.png',
 ];
 const SCOPE_PATH = new URL(self.registration.scope).pathname;

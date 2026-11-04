@@ -43,7 +43,7 @@ export function buildCapture({ installId, clipId, sampleRate, durationMs, sizeBy
     payload: {
       clipId, sampleRate, durationMs, sizeBytes, sha256, clippedSamples, recordedAt, interrupted,
       encoding: 'pcm16-wav', channels: 1,
-      captureVersion: 'pwa-pcm16-native-v1', sourceKind: 'pwa-manual',
+      captureVersion: 'pwa-pcm16-native-v1', sourceKind: 'pwa-manual', clockSource: 'phone',
     },
   };
 }
@@ -99,6 +99,25 @@ export function storageState({ clips, bytes }) {
   if (clips >= LIMITS.blockClips || bytes >= LIMITS.blockBytes) return 'blocked';
   if (clips >= LIMITS.warnClips || bytes >= LIMITS.warnBytes) return 'warn';
   return 'ok';
+}
+
+// True when the capture was recorded by another installation (phone, tab or device).
+export function isRemote(envelope, installId) {
+  return !!envelope && envelope.sourceId !== installId;
+}
+
+// Owner-facing sync state of one event. `event` is a stored row ({envelope, acceptedAt, deleted}),
+// `outboxRows` are this event's outbox rows (capture, tombstone and review messages), `clip` is the
+// clips row for the current clip (null when deleted). Synced is shown only once the Worker has
+// acknowledged every message and, for a local clip, its upload; never from a local flag alone.
+export function syncBadge({ event, outboxRows = [], clip, paired, installId }) {
+  if (!paired) return 'Saved on this phone';
+  if (outboxRows.some((r) => r.state === 'failed' || r.state === 'conflict')) return 'Sync failed';
+  if (outboxRows.some((r) => r.state === 'pending' || r.state === 'sent')) return 'Queued';
+  if (isRemote(event.envelope, installId)) return 'Synced';
+  if (!event.acceptedAt) return 'Queued';
+  if (!event.deleted && clip && clip.origin !== 'remote' && !clip.uploadedAt) return 'Queued';
+  return 'Synced';
 }
 
 export const TRIM_VERSION = 'pwa-trim-v1';
