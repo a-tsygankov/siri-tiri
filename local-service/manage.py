@@ -174,6 +174,12 @@ def main(argv=None):
             p.add_argument('--once', action='store_true')
     analyze = sub.add_parser('analyze')
     analyze.add_argument('wav', type=Path)
+    importer = sub.add_parser('import-bundle')
+    importer.add_argument('bundle', type=Path)
+    importer.add_argument('--audio-dir', type=Path, required=True)
+    importer.add_argument('--archive-root', type=Path, default=ROOT / 'imports')
+    imported_analysis = sub.add_parser('analyze-import')
+    imported_analysis.add_argument('manifest', type=Path)
     for name in ('prepare-catmeows', 'evaluate-catmeows'):
         dataset = sub.add_parser(name)
         dataset.add_argument('--dataset-root', type=Path, default=REPO / 'CatMeows')
@@ -219,6 +225,21 @@ def main(argv=None):
         return run_stack(args.port, args.db, args.audio_root)
     if args.command in review_commands:
         return review_command(args, argv)
+    if args.command in ('import-bundle', 'analyze-import'):
+        # A 16-kHz import itself is stdlib-only; native-rate imports need pinned setup.
+        if PYTHON.is_file() and Path(sys.executable).resolve() != PYTHON.resolve():
+            return subprocess.call([str(PYTHON), '-B', str(ROOT / 'manage.py')] + (sys.argv[1:] if argv is None else argv), env=environment())
+        if args.command == 'import-bundle':
+            from phone_bundle import import_bundle
+            path = import_bundle(args.bundle, args.audio_dir, args.archive_root)
+            report = json.loads(path.read_text(encoding='utf-8'))
+            print(json.dumps(dict(status=report['status'], manifest=str(path))))
+            return 0 if report['status'] == 'complete' else 2
+        from phone_analysis import analyze_import
+        path = analyze_import(args.manifest)
+        report = json.loads(path.read_text(encoding='utf-8'))
+        print(json.dumps(dict(status=report['status'], report=str(path))))
+        return {'complete': 0, 'insufficient_data': 2, 'failed': 1}[report['status']]
     if args.command in ('smoke', 'analyze', 'prepare-catmeows', 'evaluate-catmeows'):
         require_environment()
         if Path(sys.executable).resolve() != PYTHON.resolve():
@@ -226,8 +247,8 @@ def main(argv=None):
         if args.command == 'smoke':
             model_smoke()
         elif args.command == 'analyze':
-            from inference import Yamnet, load_wav
-            print(json.dumps(Yamnet().analyze(load_wav(args.wav))))
+            from phone_analysis import analyze_phone
+            print(json.dumps(analyze_phone(args.wav)))
         elif args.command == 'prepare-catmeows':
             from dataset_prepare import prepare_catmeows
             print('Prepared manifest: ' + str(prepare_catmeows(args.dataset_root)))

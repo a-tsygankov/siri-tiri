@@ -12,6 +12,7 @@ import phone_audio as audio
 
 VERSION = 'phone-export-archive-v1'
 MAX_TOTAL = 600 * 1024 * 1024
+MAX_MANIFEST = 64 * 1024 * 1024
 
 
 def read_bounded(path, limit):
@@ -82,7 +83,7 @@ def verify_archive(manifest_path):
     manifest_path = Path(manifest_path)
     require(manifest_path.name == 'manifest.json' and not manifest_path.is_symlink(), 'archive_manifest_path_invalid')
     root = manifest_path.parent
-    stored = validation.read_json(read_bounded(manifest_path, validation.MAX_JSON))
+    stored = validation.read_json(read_bounded(manifest_path, MAX_MANIFEST), limit=MAX_MANIFEST)
     raw = read_bounded(confined(root, 'bundle.json'), validation.MAX_JSON)
     require(type(stored) is dict and type(stored.get('receivedFilenames')) is list
             and all(type(name) is str for name in stored['receivedFilenames']), 'archive_receipt_invalid')
@@ -141,7 +142,9 @@ def import_bundle(bundle_path, audio_dir, archive_root):
         staged_manifest = manifest_for(raw, fetch, save)
         require(staged_manifest == manifest, 'bundle_audio_changed_during_import')
         (stage / 'bundle.json').write_bytes(raw)
-        (stage / 'manifest.json').write_text(json.dumps(manifest, indent=2, allow_nan=False) + '\n', encoding='utf-8')
+        manifest_bytes = (json.dumps(manifest, indent=2, allow_nan=False) + '\n').encode('utf-8')
+        require(len(manifest_bytes) <= MAX_MANIFEST, 'archive_manifest_too_large')
+        (stage / 'manifest.json').write_bytes(manifest_bytes)
         target = complete if manifest['status'] == 'complete' else archive_root / (audio.sha256(raw)[:16] + '-' + uuid.uuid4().hex)
         if os.name == 'nt':
             require(all(len(str(target.resolve() / p.relative_to(stage))) < 260 for p in stage.rglob('*')),

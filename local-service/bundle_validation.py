@@ -21,8 +21,8 @@ def require(ok, code):
         raise ValueError(code)
 
 
-def read_json(data):
-    require(len(data) <= MAX_JSON, 'bundle_json_too_large')
+def read_json(data, limit=None):
+    require(len(data) <= (MAX_JSON if limit is None else limit), 'bundle_json_too_large')
     def pairs(items):
         out = {}
         for key, value in items:

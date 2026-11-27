@@ -198,3 +198,7 @@ Do not acknowledge real captures with synthetic results. Use a separate `SIRI_TI
 ### Verification
 
 From the repository root: `py -3 -m unittest discover -s local-service/tests -v`. HTTP tests bind an ephemeral **127.0.0.1** port and use temporary databases, leaving any running service on port 8765 untouched. Tests include independent competing processes, abrupt worker exit, an abrupt process crash before enqueue commit, migration rollback, ownership fencing and result retry semantics. They require permission for loopback sockets and subprocesses when run inside a sandbox.
+
+## Phone export import
+
+`py -3 local-service/manage.py import-bundle BUNDLE --audio-dir DIRECTORY` archives the PWA's JSON and original WAVs under ignored `local-service/imports/`. `analyze-import MANIFEST` writes a separate YAMNet report; `analyze WAV` now accepts mono 44.1/48-kHz phone recordings as well as existing 16-kHz input. Use pinned setup first for native-rate conversion and inference. See [the complete workflow, retry behavior and limits](PHONE_IMPORT.md). These commands do not touch the running API or its database.

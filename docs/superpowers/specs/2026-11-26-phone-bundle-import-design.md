@@ -1,6 +1,6 @@
 # Phone export archive and analysis design
 
-Status: proposed for approval. Date: 2026-11-26.
+Status: approved by the user; implementation on PR #17. Date: 2026-11-26.
 
 ## Purpose and scope
 
@@ -12,7 +12,9 @@ The user selected a separate local archive. Direct live-database ingestion would
 
 `manage.py import-bundle BUNDLE --audio-dir DIRECTORY [--archive-root PATH]` accepts .json and .json.txt content. Default archive root is ignored `local-service/imports/`. Source WAV filenames must be single safe basenames; reject absolute paths, traversal, Windows drive/ADS syntax, reserved names, case-insensitive collisions and links escaping the audio directory. Never use identifiers as unchecked paths.
 
-Each successful import is an immutable directory keyed by the original bundle SHA-256. It contains the byte-exact original bundle, verified original WAVs addressed by SHA-256, versioned 16-kHz WAV derivatives, and a JSON manifest. No persistent aggregate SQLite index is needed initially. Repeated identical import verifies an existing complete artifact and returns it; it never silently overwrites edited evidence. New exports create new snapshots. Consequently records-only updates do not silently borrow history or audio from unrelated snapshots. They retain metadata and report missing audio; the owner can import Export all or supply missing files and retry an incomplete import (which was not published).
+Each complete import is an immutable directory keyed by the original bundle SHA-256. It contains the byte-exact original bundle, verified original WAVs addressed by SHA-256, versioned 16-kHz WAV derivatives, and a JSON manifest. No persistent aggregate SQLite index is needed initially. Repeated identical import verifies an existing complete artifact and returns it; it never silently overwrites edited evidence. New exports create new snapshots. Consequently records-only updates do not silently borrow history or audio from unrelated snapshots. They retain metadata and report missing audio; the owner can import Export all or supply missing files and retry an incomplete attempt without replacing its evidence.
+
+Implementation decisions: incomplete attempt names use a 16-character bundle-hash prefix plus a full UUID to stay within ordinary Windows path limits; the full hash remains in the manifest. Paths that would exceed 259 characters fail before publication with guidance to use a shorter archive root. Expanded generated manifests have a separate 64-MiB bound, checked before publication and during verification; the source JSON limit remains 16 MiB.
 
 Publish a snapshot by staging and atomic directory rename. Validate metadata and all supplied files before publication. Invalid input leaves no published snapshot. Missing manifest-listed files are represented by explicit `missing_audio` rows and yield exit 2. Incomplete imports publish an immutable attempt directory named with bundle hash plus UUID, preserving the original JSON, every verified supplied WAV, any derivatives and a coverage manifest. Retrying with more files can publish a complete hash-keyed snapshot without overwriting prior attempts. Malformed metadata, checksum mismatches and conflicting content under one message ID exit 1 with no publication. Complete import exits 0. Capture/review forks are preserved as incomplete evidence, yield exit 2 and exclude only the affected events from analysis. Bound JSON to 16 MiB, each WAV to 3 MiB, metadata arrays to 10,000 entries each, and total supplied audio to 600 MiB. Build output incrementally without loading the whole dataset into memory.
 

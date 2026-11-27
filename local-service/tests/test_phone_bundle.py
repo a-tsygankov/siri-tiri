@@ -209,6 +209,31 @@ class PhoneBundleTests(unittest.TestCase):
         self.assertEqual(doc['status'], 'complete')
         self.assertEqual(doc['events'][0]['messageId'], uid(3))
 
+    def test_maximum_inventory_manifest_remains_readable(self):
+        # A bounded input can expand after provenance and derivative refs are added.
+        import phone_audio
+        self.doc['events'], self.doc['clips'] = [], []
+        for i in range(10000):
+            event = capture(self.data, i + 1000)
+            event['eventId'] = uid(i + 20000)
+            self.doc['events'].append(event)
+            self.doc['clips'].append(manifest_row(event, f'{i:05d}' + 'x' * 219 + '.wav'))
+        raw = json.dumps(self.doc).encode()
+        snapshot = self.root / 'snapshot'
+        snapshot.mkdir()
+        def save(ref, data):
+            p = snapshot / ref
+            p.parent.mkdir(exist_ok=True)
+            if not p.exists():
+                p.write_bytes(data)
+        doc = phone_bundle.manifest_for(raw, lambda _: self.data, save)
+        path = snapshot / 'manifest.json'
+        path.write_text(json.dumps(doc, indent=2))
+        (snapshot / 'bundle.json').write_bytes(raw)
+        self.assertLess(len(raw), 16 * 1024 * 1024)
+        self.assertGreater(path.stat().st_size, 16 * 1024 * 1024)
+        self.assertEqual(phone_bundle.verify_archive(path)['status'], 'complete')
+
     def test_trim_source_pcm_is_checked_and_original_can_be_absent(self):
         original = self.doc['events'][0]
         cut_data = wav_bytes(samples=[0] * 800)

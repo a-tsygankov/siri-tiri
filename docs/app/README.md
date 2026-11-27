@@ -126,10 +126,10 @@ Clips are recorded at the phone's native rate (commonly 44.1 or 48 kHz), not 16 
 ## Known gaps
 
 - Nothing here has been run on a real iPhone or Android device. Microphone, install, share sheet (including user-activation timing for the first `navigator.share`), multi-chunk export, standalone mode and VoiceOver are unverified.
-- `manage.py analyze` has not been run on exported clips; the local service cannot yet resample 44.1/48 kHz input.
+- The [local phone bundle importer](../../local-service/PHONE_IMPORT.md) now accepts JSON plus WAV exports, preserves trim/review history and resamples 44.1/48 kHz for YAMNet. Shipping PWA functions generated synthetic fixtures verified with the real model; exports from a physical phone remain unverified.
 - iOS may evict site storage after a long period of disuse. Behavior over time is untested; export regularly.
 - The `?v=`-free update path on Safari is unverified.
 - The unique `[eventId, revision]` index exists only in databases created by version 1 or later of the store; a pre-release test database from an earlier build keeps the non-unique index (the in-transaction revision check still applies). Clear site data on test phones before real use.
 - Sync has been verified only between two browser origins on one Windows machine against a local Worker; no real phone, no deployed Worker. The Worker has not been deployed and `wrangler.toml` still carries placeholder resource ids.
 - The service worker precaches `sync.js`; the sync requests themselves go to the Worker origin and are never cached.
-- Follow-ups: local-service bundle importer with versioned 44.1/48 kHz to 16 kHz resampling and a local-service cloud client; episode records in the pull stream; splitting `app.js` into review, recording, settings and sync modules.
+- Follow-ups: real-phone export/import validation and a local-service cloud client; episode records in the pull stream; splitting `app.js` into review, recording, settings and sync modules.

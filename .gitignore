@@ -4,6 +4,7 @@ local-service/models/
 local-service/data/
 local-service/audio/
 local-service/run/
+local-service/imports/
 __pycache__/
 *.py[cod]
 worker/node_modules/

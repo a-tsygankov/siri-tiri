@@ -23,28 +23,34 @@ JSON <=16 MiB; WAV <=3 MiB; <=10,000 entries per metadata array; supplied audio 
 
 Files: `local-service/phone_audio.py`, `local-service/tests/test_phone_audio.py`.
 Interface: `read_pcm(data: bytes) -> (rate, array('h'))`; `convert(samples, rate) -> (array('h'), provenance)`; `prepare(data) -> (derived_wav_bytes, provenance)`.
-- [ ] Write failing length/silence/tone/alias/format/truncation tests; run targeted unittest and observe failure.
-- [ ] Implement bounded PCM parsing and versioned rational polyphase resampling; 16-kHz identity avoids optional dependencies.
-- [ ] Run new and existing Python suites with the installed inference Python and core Python; commit audio task.
+- [x] Write failing length/silence/tone/alias/format/truncation tests; run targeted unittest and observe failure.
+- [x] Implement bounded PCM parsing and versioned rational polyphase resampling; 16-kHz identity avoids optional dependencies.
+- [x] Run new and existing Python suites with the installed inference Python and core Python; commit audio task.
 
 ## Task 2: Archive validation and publication
 
 Files: `local-service/phone_bundle.py`, `local-service/bundle_validation.py`, `local-service/tests/test_phone_bundle.py`.
 Interfaces: `validate_bundle(doc) -> normalized metadata plus event coverage`; `import_bundle(bundle_path, audio_dir, archive_root) -> manifest_path`.
-- [ ] Write failing tests using valid PWA-shaped fixtures: complete/repeat, partial/retry, records-only, deletion/reviews, unsafe names/links, ID conflicts, version/type bounds, trim/restore/forks/missing ancestors.
-- [ ] Implement stdlib schema subset for existing event/review contracts, strict payload/manifests and chain validation, preserving exact original JSON. Reject altered identity; retain unresolved history/forks as incomplete coverage.
-- [ ] Stage verified audio and derivatives, then manifest and atomic directory rename. Complete snapshots use bundle hash, incomplete attempts hash+UUID. Verify deterministic expected contents on repeated complete imports. Test edits and failed publication.
-- [ ] Run full Python suites; commit archive task.
+- [x] Write failing tests using valid PWA-shaped fixtures: complete/repeat, partial/retry, records-only, deletion/reviews, unsafe names/links, ID conflicts, version/type bounds, trim/restore/forks/missing ancestors.
+- [x] Implement stdlib schema subset for existing event/review contracts, strict payload/manifests and chain validation, preserving exact original JSON. Reject altered identity; retain unresolved history/forks as incomplete coverage.
+- [x] Stage verified audio and derivatives, then manifest and atomic directory rename. Complete snapshots use bundle hash, incomplete attempts hash+UUID. Verify deterministic expected contents on repeated complete imports. Test edits and failed publication.
+- [x] Run full Python suites; commit archive task.
 
 ## Task 3: CLI, analysis and documentation
 
 Files: `local-service/phone_analysis.py`, `local-service/manage.py`, `local-service/tests/test_phone_analysis.py`, `scripts/import-phone-bundle.ps1`, `.gitignore`, root/service/PWA READMEs, handoff/project plan.
 Interface: `analyze_import(manifest_path, predictor=None) -> report_path`; `analyze_phone(path, predictor=None) -> scores with source provenance`.
-- [ ] Write failing CLI exit/reexec tests and analysis coverage/tampering tests; run to observe failure.
-- [ ] Add import-bundle, analyze-import and native-rate analyze support while preserving 16-kHz stereo behavior. Bind artifacts/model/preprocessing hashes and emit immutable per-event reports with explicit exclusions and failures.
-- [ ] Generate synthetic bundle with real PWA buildBundle/encodeWav/buildTrim, import and run pinned YAMNet. Run full Python/PWA suites, diff checks; update docs with exact executed results and pending phone validation.
+- [x] Write failing CLI exit/reexec tests and analysis coverage/tampering tests; run to observe failure.
+- [x] Add import-bundle, analyze-import and native-rate analyze support while preserving 16-kHz stereo behavior. Bind artifacts/model/preprocessing hashes and emit immutable per-event reports with explicit exclusions and failures.
+- [x] Generate synthetic bundle with real PWA buildBundle/encodeWav/buildTrim, import and run pinned YAMNet. Run full Python/PWA suites, diff checks; update docs with exact executed results and pending phone validation.
 - [ ] Final independent code review, fix important findings with regression tests, commit/push, update draft PR #17 and check CI. Do not merge.
 
 ## Execution record
 
 Baseline on updated main: 75 inference Python tests, 78 PWA Node tests, 41 Worker tests and typecheck passed (Worker used existing cloud-sync worktree). Implementation proceeds inline under the user's explicit approval; no additional plan approval needed.
+
+- Task 1 complete: tests first failed for the missing module, then five audio tests passed. Full suite: 80 tests OK in pinned runtime; core 80 OK with six optional skips. Commit 1ea9adf.
+- Task 2 complete: failing archive tests preceded implementation. Full suite: 95 tests OK with one Windows symlink privilege skip; core 95 OK with seven skips. Commit 719e8ed. Partial receipts also received a failing verification regression before correction.
+- Task 3 implemented: CLI, immutable reports, direct native-rate analysis, stereo preservation, synthetic shipping-PWA fixture and documentation. Real pinned setup/smoke and two-current-clip YAMNet analysis succeeded. No physical-phone recordings used.
+- Ruling: incomplete snapshot names retain only 16 hash characters plus full UUID; full hash remains inside. Reproduced Windows path >259 characters falsely appeared missing after rename. Shorter names and prepublication path checks prevent unreadable artifacts; unusually long destinations require a shorter archive root.
+- Final review: one important finding, expanded generated manifests exceeded the source JSON cap. A 10,000-clip regression reproduced it. Separate 64-MiB manifest bounds now apply before publication and on verification, while input remains capped at 16 MiB. No deferred findings.
