@@ -43,7 +43,7 @@ Interface: `analyze_import(manifest_path, predictor=None) -> report_path`; `anal
 - [x] Write failing CLI exit/reexec tests and analysis coverage/tampering tests; run to observe failure.
 - [x] Add import-bundle, analyze-import and native-rate analyze support while preserving 16-kHz stereo behavior. Bind artifacts/model/preprocessing hashes and emit immutable per-event reports with explicit exclusions and failures.
 - [x] Generate synthetic bundle with real PWA buildBundle/encodeWav/buildTrim, import and run pinned YAMNet. Run full Python/PWA suites, diff checks; update docs with exact executed results and pending phone validation.
-- [ ] Final independent code review, fix important findings with regression tests, commit/push, update draft PR #17 and check CI. Do not merge.
+- [x] Final independent code review, fix important findings with regression tests, commit/push, update PR #17 and monitor CI. Do not merge. CI outcomes are recorded on the PR.
 
 ## Execution record
 
@@ -54,3 +54,4 @@ Baseline on updated main: 75 inference Python tests, 78 PWA Node tests, 41 Worke
 - Task 3 implemented: CLI, immutable reports, direct native-rate analysis, stereo preservation, synthetic shipping-PWA fixture and documentation. Real pinned setup/smoke and two-current-clip YAMNet analysis succeeded. No physical-phone recordings used.
 - Ruling: incomplete snapshot names retain only 16 hash characters plus full UUID; full hash remains inside. Reproduced Windows path >259 characters falsely appeared missing after rename. Shorter names and prepublication path checks prevent unreadable artifacts; unusually long destinations require a shorter archive root.
 - Final review: one important finding, expanded generated manifests exceeded the source JSON cap. A 10,000-clip regression reproduced it. Separate 64-MiB manifest bounds now apply before publication and on verification, while input remains capped at 16 MiB. No deferred findings.
+- Final local verification: `.venv/Scripts/python.exe -B -m unittest discover -s local-service/tests -q` ran 104 tests, OK with one Windows symlink privilege skip (88.637 s). `py -3 -B -m unittest discover -s local-service/tests -q` ran 104 tests, OK with nine skips (eight optional numerical/interoperability checks and the symlink test; 86.524 s). `node --test docs/app/tests/*.test.mjs` passed all 78 tests. Pinned setup/smoke, pip check, 17 Python modules parsed and git diff checks passed. The wrapper and automatic interpreter switching also completed real-model synthetic import/analysis. Live DB, CatMeows originals and user `.claude/` contents were not changed.
