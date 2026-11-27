@@ -53,6 +53,8 @@ Local service **0.3.0** adds an optional Windows CPU YAMNet worker and repeatabl
 
 ## CatMeows research dataset
 
+Phone exports can now be archived and analyzed locally with checksum/history validation and native-rate resampling. See [phone import commands and limits](local-service/PHONE_IMPORT.md). Original recordings and owner reviews are preserved independently of model scores; no live database or cloud upload is involved.
+
 Start recorded-clip experiments with the authors' [CatMeows v1.0.2 download and terms](https://zenodo.org/records/4008297), DOI [10.5281/zenodo.4008297](https://doi.org/10.5281/zenodo.4008297). It contains 440 meows from 21 cats in brushing, waiting-for-food and unfamiliar-isolation recording conditions. No Tiri recordings are available yet; these context labels are not interpretations of Tiri's intent.
 
 ```powershell
